@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/catalog/presentation/catalog_home_screen.dart';
+import '../features/activation/presentation/activation_gate.dart';
 import '../features/settings/application/settings_providers.dart';
 
 class JmPosApp extends ConsumerWidget {
@@ -20,7 +21,7 @@ class JmPosApp extends ConsumerWidget {
       },
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
-      home: const CatalogHomeScreen(),
+      home: const ActivationGate(child: CatalogHomeScreen()),
     );
   }
 }

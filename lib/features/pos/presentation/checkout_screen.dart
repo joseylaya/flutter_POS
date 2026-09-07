@@ -20,6 +20,9 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 }
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
+  int step = 0;
+  String? orderType;
+  String? fulfillmentType;
   String method = 'CASH';
   String cashDigits = '';
   String gcashReference = '';
@@ -38,7 +41,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         toolbarHeight: 76,
         leading: IconButton.filledTonal(
           tooltip: 'Back to order',
-          onPressed: saving ? null : () => Navigator.pop(context),
+          onPressed: saving ? null : _back,
           icon: const Icon(Icons.arrow_back),
         ),
         title: Column(
@@ -49,7 +52,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
             Text(
-              '${widget.quote.lines.fold<int>(0, (sum, line) => sum + line.quantity)} items • Review and collect payment',
+              '${widget.quote.lines.fold<int>(0, (sum, line) => sum + line.quantity)} items • ${_stepTitle()}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -62,49 +65,105 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           SizedBox(width: 16),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, size) {
-          final left = _OrderReview(quote: widget.quote);
-          final right = _PaymentPanel(
-            quote: widget.quote,
-            method: method,
-            cashReceived: cashReceived,
-            change: change,
-            saving: saving,
-            error: error,
-            gcashReference: gcashReference,
-            onMethod: _setMethod,
-            onCash: _setCash,
-            onKey: _key,
-            onReference: (value) => setState(() {
-              gcashReference = value;
-              error = null;
-            }),
-            onComplete: _complete,
-          );
-          if (size.maxWidth >= 900) {
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: size.maxWidth * .36,
-                    child: SingleChildScrollView(child: left),
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(child: SingleChildScrollView(child: right)),
-                ],
-              ),
-            );
-          }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [left, const SizedBox(height: 16), right],
-          );
-        },
+      body: Column(
+        children: [
+          _CheckoutProgress(step: step, orderType: orderType),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: switch (step) {
+                0 => _OrderTypePage(
+                  key: const ValueKey('order-type'),
+                  selected: orderType,
+                  onSelected: (value) => setState(() {
+                    orderType = value;
+                    if (value == 'DINE_IN') fulfillmentType = null;
+                    error = null;
+                  }),
+                  onContinue: orderType == null ? null : _continueOrderType,
+                ),
+                1 => _FulfillmentPage(
+                  key: const ValueKey('fulfillment'),
+                  selected: fulfillmentType,
+                  onSelected: (value) => setState(() {
+                    fulfillmentType = value;
+                    error = null;
+                  }),
+                  onContinue: fulfillmentType == null
+                      ? null
+                      : () => setState(() => step = 2),
+                ),
+                _ => _paymentPage(),
+              },
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _paymentPage() => LayoutBuilder(
+    builder: (context, size) {
+      final left = _OrderReview(quote: widget.quote);
+      final right = _PaymentPanel(
+        quote: widget.quote,
+        method: method,
+        cashReceived: cashReceived,
+        change: change,
+        saving: saving,
+        error: error,
+        gcashReference: gcashReference,
+        onMethod: _setMethod,
+        onCash: _setCash,
+        onKey: _key,
+        onReference: (value) => setState(() {
+          gcashReference = value;
+          error = null;
+        }),
+        onComplete: _complete,
+        orderLabel: orderType == 'DINE_IN'
+            ? 'Dine in'
+            : 'Take out • ${fulfillmentType == 'DELIVERY' ? 'Delivery' : 'Pickup'}',
+      );
+      if (size.maxWidth >= 900) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: size.maxWidth * .36,
+                child: SingleChildScrollView(child: left),
+              ),
+              const SizedBox(width: 18),
+              Expanded(child: SingleChildScrollView(child: right)),
+            ],
+          ),
+        );
+      }
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [left, const SizedBox(height: 16), right],
+      );
+    },
+  );
+
+  String _stepTitle() => switch (step) {
+    0 => 'Choose order type',
+    1 => 'Choose take-out method',
+    _ => 'Review and collect payment',
+  };
+
+  void _continueOrderType() {
+    setState(() => step = orderType == 'TAKE_OUT' ? 1 : 2);
+  }
+
+  void _back() {
+    if (step == 0) {
+      Navigator.pop(context);
+    } else {
+      setState(() => step = step == 2 && orderType == 'DINE_IN' ? 0 : step - 1);
+    }
   }
 
   Future<void> _setMethod(String value) async {
@@ -141,6 +200,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 
   Future<void> _complete() async {
+    if (saving) return;
     await AppHaptics.medium();
     setState(() {
       saving = true;
@@ -152,6 +212,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           'Enter the GCash or Maya transaction reference.',
         );
       }
+      if (orderType == null) {
+        throw const ValidationException('Select Dine in or Take out.');
+      }
       final result = await ref
           .read(checkoutServiceProvider)
           .complete(
@@ -159,6 +222,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             paymentMethod: method,
             cashReceived: method == 'CASH' ? cashReceived : null,
             paymentReference: method == 'GCASH' ? gcashReference : null,
+            orderType: orderType!,
+            fulfillmentType: fulfillmentType,
           );
       ref.read(cartProvider.notifier).clear();
       await AppHaptics.success();
@@ -195,6 +260,248 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (mounted) setState(() => saving = false);
     }
   }
+}
+
+class _CheckoutProgress extends StatelessWidget {
+  const _CheckoutProgress({required this.step, required this.orderType});
+
+  final int step;
+  final String? orderType;
+
+  @override
+  Widget build(BuildContext context) {
+    final stages = orderType == 'TAKE_OUT'
+        ? const ['Order type', 'Take-out method', 'Payment']
+        : const ['Order type', 'Payment'];
+    final activeStage = orderType == 'TAKE_OUT' ? step : (step == 2 ? 1 : 0);
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+        child: Row(
+          children: [
+            for (var index = 0; index < stages.length; index++) ...[
+              if (index > 0)
+                Expanded(
+                  child: Divider(
+                    color: index <= activeStage
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                    thickness: 2,
+                  ),
+                ),
+              Column(
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: index <= activeStage
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.surfaceContainerHighest,
+                    foregroundColor: index <= activeStage
+                        ? Theme.of(context).colorScheme.onPrimary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                    child: index < activeStage
+                        ? const Icon(Icons.check, size: 17)
+                        : Text('${index + 1}'),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    stages[index],
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OrderTypePage extends StatelessWidget {
+  const _OrderTypePage({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+    required this.onContinue,
+  });
+
+  final String? selected;
+  final ValueChanged<String> onSelected;
+  final VoidCallback? onContinue;
+
+  @override
+  Widget build(BuildContext context) => _ChoicePage(
+    title: 'How will this order be served?',
+    subtitle: 'Choose one option to continue to payment.',
+    choices: [
+      _Choice(
+        value: 'DINE_IN',
+        title: 'Dine in',
+        subtitle: 'The customer will eat at the restaurant.',
+        icon: Icons.restaurant,
+      ),
+      _Choice(
+        value: 'TAKE_OUT',
+        title: 'Take out',
+        subtitle: 'The order will be picked up or delivered.',
+        icon: Icons.shopping_bag_outlined,
+      ),
+    ],
+    selected: selected,
+    onSelected: onSelected,
+    onContinue: onContinue,
+  );
+}
+
+class _FulfillmentPage extends StatelessWidget {
+  const _FulfillmentPage({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+    required this.onContinue,
+  });
+
+  final String? selected;
+  final ValueChanged<String> onSelected;
+  final VoidCallback? onContinue;
+
+  @override
+  Widget build(BuildContext context) => _ChoicePage(
+    title: 'How will the take-out order be received?',
+    subtitle: 'Choose Delivery or Pickup.',
+    choices: const [
+      _Choice(
+        value: 'DELIVERY',
+        title: 'Delivery',
+        subtitle: 'The order will be delivered to the customer.',
+        icon: Icons.delivery_dining,
+      ),
+      _Choice(
+        value: 'PICKUP',
+        title: 'Pickup',
+        subtitle: 'The customer will collect the order.',
+        icon: Icons.storefront_outlined,
+      ),
+    ],
+    selected: selected,
+    onSelected: onSelected,
+    onContinue: onContinue,
+  );
+}
+
+class _Choice {
+  const _Choice({
+    required this.value,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String value;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+}
+
+class _ChoicePage extends StatelessWidget {
+  const _ChoicePage({
+    required this.title,
+    required this.subtitle,
+    required this.choices,
+    required this.selected,
+    required this.onSelected,
+    required this.onContinue,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<_Choice> choices;
+  final String? selected;
+  final ValueChanged<String> onSelected;
+  final VoidCallback? onContinue;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 28),
+            for (final choice in choices)
+              Card(
+                clipBehavior: Clip.antiAlias,
+                margin: const EdgeInsets.only(bottom: 14),
+                color: selected == choice.value
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : null,
+                child: InkWell(
+                  onTap: () => onSelected(choice.value),
+                  child: Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Row(
+                      children: [
+                        Icon(choice.icon, size: 38),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                choice.title,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Text(choice.subtitle),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          selected == choice.value
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_unchecked,
+                          color: selected == choice.value
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onContinue,
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('Continue'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(58),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _OrderReview extends StatelessWidget {
@@ -319,6 +626,7 @@ class _PaymentPanel extends StatelessWidget {
     required this.onKey,
     required this.onReference,
     required this.onComplete,
+    required this.orderLabel,
   });
   final SaleQuote quote;
   final String method;
@@ -332,9 +640,18 @@ class _PaymentPanel extends StatelessWidget {
   final ValueChanged<String> onKey;
   final ValueChanged<String> onReference;
   final VoidCallback onComplete;
+  final String orderLabel;
   @override
   Widget build(BuildContext context) => Column(
     children: [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Chip(
+          avatar: const Icon(Icons.restaurant_outlined, size: 18),
+          label: Text(orderLabel),
+        ),
+      ),
+      const SizedBox(height: 12),
       SegmentedButton<String>(
         segments: const [
           ButtonSegment(
@@ -495,6 +812,7 @@ class _PaymentPanel extends StatelessWidget {
                   autofocus: true,
                   onChanged: onReference,
                   textCapitalization: TextCapitalization.characters,
+                  maxLength: 80,
                   decoration: const InputDecoration(
                     labelText: 'Transaction reference',
                     hintText: 'Example: 8291045678912',
@@ -539,7 +857,14 @@ class _PaymentPanel extends StatelessWidget {
         ),
       const SizedBox(height: 18),
       FilledButton.icon(
-        onPressed: saving ? null : onComplete,
+        onPressed:
+            saving ||
+                (method == 'CASH' &&
+                    (cashReceived == null ||
+                        cashReceived! < quote.totalAmount)) ||
+                (method == 'GCASH' && gcashReference.trim().isEmpty)
+            ? null
+            : onComplete,
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(66),
           foregroundColor: const Color(0xFF181000),

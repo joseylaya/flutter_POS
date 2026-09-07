@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../database/app_database.dart';
 import '../../../database/database_provider.dart';
 import '../data/reports_repository.dart';
 
@@ -8,7 +7,7 @@ final reportsRepositoryProvider = Provider<ReportsRepository>((ref) {
   return ReportsRepository(ref.watch(appDatabaseProvider));
 });
 
-final salesHistoryProvider = StreamProvider<List<Sale>>((ref) {
+final salesHistoryProvider = StreamProvider<List<SaleHistoryEntry>>((ref) {
   return ref.watch(reportsRepositoryProvider).watchSales();
 });
 

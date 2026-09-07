@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 import '../../backup/backup_provider.dart';
+import '../../backup/backup_service.dart';
 import '../../printing/receipt_service.dart';
 import '../application/settings_providers.dart';
 
@@ -90,25 +91,7 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _Section(
-                  title: 'Local backup',
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      FilledButton.tonalIcon(
-                        onPressed: () => _export(context, ref),
-                        icon: const Icon(Icons.ios_share),
-                        label: const Text('Export backup'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () => _restore(context, ref),
-                        icon: const Icon(Icons.restore),
-                        label: const Text('Restore backup'),
-                      ),
-                    ],
-                  ),
-                ),
+                _Section(title: 'Local backup', child: const _BackupPanel()),
               ],
             ),
           ),
@@ -179,25 +162,25 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _export(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(backupServiceProvider).shareBackup();
-    } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
-      }
-    }
-  }
-
   Future<void> _restore(BuildContext context, WidgetRef ref) async {
+    final password = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Restore backup?'),
-        content: const Text(
-          'The selected valid backup will replace local JmPOS data. A safety copy is retained.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'The selected valid backup will replace local JmPOS data. A safety copy is retained.',
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: password,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Backup password'),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -211,9 +194,14 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      password.dispose();
+      return;
+    }
     try {
-      if (await ref.read(backupServiceProvider).pickAndRestore()) {
+      if (await ref
+          .read(backupServiceProvider)
+          .pickAndRestore(password: password.text)) {
         SystemNavigator.pop();
       }
     } catch (error) {
@@ -221,6 +209,196 @@ class SettingsScreen extends ConsumerWidget {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('$error')));
+      }
+    } finally {
+      password.dispose();
+    }
+  }
+}
+
+class _BackupPanel extends ConsumerStatefulWidget {
+  const _BackupPanel();
+
+  @override
+  ConsumerState<_BackupPanel> createState() => _BackupPanelState();
+}
+
+class _BackupPanelState extends ConsumerState<_BackupPanel> {
+  late Future<BackupStatus> status;
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    status = ref.read(backupServiceProvider).status();
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<BackupStatus>(
+    future: status,
+    builder: (context, snapshot) {
+      final value = snapshot.data;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value?.configured == true
+                ? 'Automatic encrypted backups are enabled.'
+                : 'Set a password to protect automatic backups.',
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Schedule: ${value?.schedule ?? '10:00 AM, 3:00 PM, 10:00 PM'}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            'Folder: ${value?.folder ?? 'Downloads/JmPOS/database-backup'}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            value?.lastBackupAt == null
+                ? 'Last backup: Not yet created'
+                : 'Last backup: ${value!.lastBackupAt}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: busy ? null : _configure,
+                icon: const Icon(Icons.lock_outline),
+                label: Text(
+                  value?.configured == true
+                      ? 'Change backup password'
+                      : 'Enable automatic backup',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy || value?.configured != true
+                    ? null
+                    : _backupNow,
+                icon: const Icon(Icons.backup_outlined),
+                label: const Text('Back up now'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy || value?.configured != true ? null : _export,
+                icon: const Icon(Icons.ios_share),
+                label: const Text('Share encrypted backup'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy
+                    ? null
+                    : () => const SettingsScreen()._restore(context, ref),
+                icon: const Icon(Icons.restore),
+                label: const Text('Restore backup'),
+              ),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+
+  Future<void> _configure() async {
+    final password = TextEditingController();
+    final confirmation = TextEditingController();
+    String? error;
+    final selected = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Automatic backup password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Keep this password outside the phone. Backups cannot be restored without it.',
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Changing it protects future backups only. Older backups still require the previous password.',
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: password,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Password'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: confirmation,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Confirm password',
+                  errorText: error,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (password.text.length < 8) {
+                  setDialogState(() => error = 'Use at least 8 characters.');
+                } else if (password.text != confirmation.text) {
+                  setDialogState(() => error = 'Passwords do not match.');
+                } else {
+                  Navigator.pop(dialogContext, password.text);
+                }
+              },
+              child: const Text('Enable and back up'),
+            ),
+          ],
+        ),
+      ),
+    );
+    password.dispose();
+    confirmation.dispose();
+    if (selected == null) return;
+    await _run(() async {
+      await ref.read(backupServiceProvider).configure(selected);
+      await ref.read(backupServiceProvider).backupNow();
+    }, 'Automatic backups enabled and first backup created.');
+  }
+
+  Future<void> _backupNow() => _run(
+    () => ref.read(backupServiceProvider).backupNow(),
+    'Encrypted backup saved to Downloads.',
+  );
+
+  Future<void> _export() => _run(
+    () => ref.read(backupServiceProvider).shareBackup(),
+    'Backup ready to share.',
+  );
+
+  Future<void> _run(Future<void> Function() action, String message) async {
+    setState(() => busy = true);
+    try {
+      await action();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$error')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          busy = false;
+          status = ref.read(backupServiceProvider).status();
+        });
       }
     }
   }

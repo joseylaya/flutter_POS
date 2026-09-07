@@ -49,6 +49,18 @@ class CheckoutService {
           await (_database.select(_database.inventoryItems)
                 ..where((table) => table.id.equals(product.inventoryItemId)))
               .getSingle();
+      final inclusionRows = await (_database.select(
+        _database.productInclusions,
+      )..where((table) => table.productId.equals(product.id))).get();
+      var unitCost = inventory.costPerUnit;
+      for (final inclusion in inclusionRows) {
+        final includedInventory =
+            await (_database.select(
+                  _database.inventoryItems,
+                )..where((table) => table.id.equals(inclusion.inventoryItemId)))
+                .getSingle();
+        unitCost += includedInventory.costPerUnit * inclusion.quantity;
+      }
       final basisPoints = discount?.appliesTo(product.id) == true
           ? discount!.percentageBasisPoints
           : 0;
@@ -64,8 +76,8 @@ class CheckoutService {
           lineSubtotal: subtotal,
           lineDiscount: lineDiscount,
           lineTotal: subtotal - lineDiscount,
-          costPerUnit: inventory.costPerUnit,
-          lineCost: inventory.costPerUnit * cartLine.quantity,
+          costPerUnit: unitCost,
+          lineCost: unitCost * cartLine.quantity,
         ),
       );
     }
@@ -77,9 +89,36 @@ class CheckoutService {
     required String paymentMethod,
     int? cashReceived,
     String? paymentReference,
+    String orderType = 'DINE_IN',
+    String? fulfillmentType,
   }) async {
     if (paymentMethod != 'CASH' && paymentMethod != 'GCASH') {
       throw const ValidationException('Select Cash or GCash.');
+    }
+    final cleanReference = paymentReference?.trim();
+    if (paymentMethod == 'GCASH' &&
+        (cleanReference == null || cleanReference.isEmpty)) {
+      throw const ValidationException(
+        'Enter the GCash or Maya transaction reference.',
+      );
+    }
+    if (cleanReference != null && cleanReference.length > 80) {
+      throw const ValidationException(
+        'Payment reference cannot exceed 80 characters.',
+      );
+    }
+    if (orderType != 'DINE_IN' && orderType != 'TAKE_OUT') {
+      throw const ValidationException('Select Dine in or Take out.');
+    }
+    if (orderType == 'TAKE_OUT' &&
+        fulfillmentType != 'DELIVERY' &&
+        fulfillmentType != 'PICKUP') {
+      throw const ValidationException('Select Delivery or Pickup.');
+    }
+    if (orderType == 'DINE_IN' && fulfillmentType != null) {
+      throw const ValidationException(
+        'Dine-in orders cannot use Delivery or Pickup.',
+      );
     }
 
     return _database.transaction(() async {
@@ -112,10 +151,10 @@ class CheckoutService {
               profitMarginBasisPoints: saleQuote.profitMarginBasisPoints,
               paymentMethod: paymentMethod,
               paymentReference: Value(
-                paymentReference?.trim().isEmpty == true
-                    ? null
-                    : paymentReference?.trim(),
+                paymentMethod == 'GCASH' ? cleanReference : null,
               ),
+              orderType: Value(orderType),
+              fulfillmentType: Value(fulfillmentType),
               cashReceived: Value(tendered),
               changeAmount: Value(change),
               completedAt: completedAt,
@@ -173,6 +212,41 @@ class CheckoutService {
                 referenceId: Value(saleId),
               ),
             );
+        final inclusions = await (_database.select(
+          _database.productInclusions,
+        )..where((table) => table.productId.equals(product.id))).get();
+        for (final inclusion in inclusions) {
+          final includedInventory =
+              await (_database.select(_database.inventoryItems)..where(
+                    (table) => table.id.equals(inclusion.inventoryItemId),
+                  ))
+                  .getSingle();
+          final includedQuantity = inclusion.quantity * line.quantity;
+          final includedQuantityAfter =
+              includedInventory.stockQuantity - includedQuantity;
+          await (_database.update(
+            _database.inventoryItems,
+          )..where((table) => table.id.equals(includedInventory.id))).write(
+            InventoryItemsCompanion(
+              stockQuantity: Value(includedQuantityAfter),
+              updatedAt: Value(completedAt),
+            ),
+          );
+          await _database
+              .into(_database.inventoryMovements)
+              .insert(
+                InventoryMovementsCompanion.insert(
+                  id: _generateId(),
+                  inventoryItemId: includedInventory.id,
+                  movementType: 'SALE',
+                  quantity: -includedQuantity,
+                  quantityBefore: includedInventory.stockQuantity,
+                  quantityAfter: includedQuantityAfter,
+                  referenceType: const Value('SALE_INCLUSION'),
+                  referenceId: Value(saleId),
+                ),
+              );
+        }
       }
       await (_database.update(
         _database.settings,

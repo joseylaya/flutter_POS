@@ -6,6 +6,16 @@ import '../domain/catalog_item.dart';
 
 typedef IdGenerator = String Function();
 
+class ProductInclusionInput {
+  const ProductInclusionInput({
+    required this.inventoryItemId,
+    required this.quantity,
+  });
+
+  final String inventoryItemId;
+  final int quantity;
+}
+
 class CatalogRepository {
   CatalogRepository(this._database, {IdGenerator? generateId})
     : _generateId = generateId ?? const Uuid().v4;
@@ -62,6 +72,7 @@ class CatalogRepository {
     required int lowStockThreshold,
     String category = 'Other',
     Uint8List? imageData,
+    List<ProductInclusionInput> inclusions = const [],
   }) async {
     final cleanName = name.trim();
     final cleanUnit = unit.trim();
@@ -76,6 +87,7 @@ class CatalogRepository {
     if (initialStock < 0) {
       throw const ValidationException('Initial stock cannot be negative.');
     }
+    _validateInclusions(inclusions);
 
     final productId = _generateId();
     final inventoryItemId = _generateId();
@@ -105,6 +117,7 @@ class CatalogRepository {
               imageData: Value(imageData),
             ),
           );
+      await _replaceInclusions(productId, inventoryItemId, inclusions);
       if (movementId != null) {
         await _database
             .into(_database.inventoryMovements)
@@ -150,6 +163,7 @@ class CatalogRepository {
     required int lowStockThreshold,
     String? category,
     Uint8List? imageData,
+    List<ProductInclusionInput> inclusions = const [],
   }) async {
     final cleanName = name.trim();
     final cleanUnit = unit.trim();
@@ -160,6 +174,7 @@ class CatalogRepository {
       costPerUnit: costPerUnit,
       lowStockThreshold: lowStockThreshold,
     );
+    _validateInclusions(inclusions);
 
     await _database.transaction(() async {
       final product = await (_database.select(
@@ -194,7 +209,76 @@ class CatalogRepository {
           updatedAt: Value(now),
         ),
       );
+      await _replaceInclusions(productId, product.inventoryItemId, inclusions);
     });
+  }
+
+  Future<List<ProductInclusionInput>> getProductInclusions(
+    String productId,
+  ) async {
+    final rows = await (_database.select(
+      _database.productInclusions,
+    )..where((table) => table.productId.equals(productId))).get();
+    return rows
+        .map(
+          (row) => ProductInclusionInput(
+            inventoryItemId: row.inventoryItemId,
+            quantity: row.quantity,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> _replaceInclusions(
+    String productId,
+    String ownInventoryItemId,
+    List<ProductInclusionInput> inclusions,
+  ) async {
+    await (_database.delete(
+      _database.productInclusions,
+    )..where((table) => table.productId.equals(productId))).go();
+    for (final inclusion in inclusions) {
+      if (inclusion.inventoryItemId == ownInventoryItemId) {
+        throw const ValidationException(
+          'A product cannot include its own inventory stock.',
+        );
+      }
+      final inventory =
+          await (_database.select(_database.inventoryItems)
+                ..where((table) => table.id.equals(inclusion.inventoryItemId)))
+              .getSingleOrNull();
+      if (inventory == null || !inventory.isActive) {
+        throw const ValidationException(
+          'Every inclusion must exist in active inventory.',
+        );
+      }
+      await _database
+          .into(_database.productInclusions)
+          .insert(
+            ProductInclusionsCompanion.insert(
+              id: _generateId(),
+              productId: productId,
+              inventoryItemId: inclusion.inventoryItemId,
+              quantity: inclusion.quantity,
+            ),
+          );
+    }
+  }
+
+  void _validateInclusions(List<ProductInclusionInput> inclusions) {
+    final ids = <String>{};
+    for (final inclusion in inclusions) {
+      if (inclusion.quantity <= 0) {
+        throw const ValidationException(
+          'Inclusion quantities must be greater than zero.',
+        );
+      }
+      if (!ids.add(inclusion.inventoryItemId)) {
+        throw const ValidationException(
+          'The same inventory item cannot be included twice.',
+        );
+      }
+    }
   }
 
   Future<int> addStock(String inventoryItemId, int quantity) =>
@@ -210,6 +294,24 @@ class CatalogRepository {
       )..where((table) => table.id.equals(productId))).getSingleOrNull();
       if (product == null) {
         throw const ValidationException('Product does not exist.');
+      }
+      if (!isActive) {
+        final usages =
+            await (_database.select(_database.productInclusions)..where(
+                  (table) =>
+                      table.inventoryItemId.equals(product.inventoryItemId),
+                ))
+                .get();
+        if (usages.isNotEmpty) {
+          final usage = usages.first;
+          final parent =
+              await (_database.select(_database.products)
+                    ..where((table) => table.id.equals(usage.productId)))
+                  .getSingleOrNull();
+          throw ValidationException(
+            '${product.name} is included in ${parent?.name ?? 'another product'}. Remove that inclusion before deactivating it.',
+          );
+        }
       }
       final now = DateTime.now();
       await (_database.update(
@@ -285,8 +387,18 @@ class CatalogRepository {
     if (name.isEmpty) {
       throw const ValidationException('Product name is required.');
     }
+    if (name.length > 120) {
+      throw const ValidationException(
+        'Product name cannot exceed 120 characters.',
+      );
+    }
     if (unit.isEmpty) {
       throw const ValidationException('Inventory unit is required.');
+    }
+    if (unit.length > 30) {
+      throw const ValidationException(
+        'Inventory unit cannot exceed 30 characters.',
+      );
     }
     if (sellingPrice < 0 || costPerUnit < 0 || lowStockThreshold < 0) {
       throw const ValidationException(

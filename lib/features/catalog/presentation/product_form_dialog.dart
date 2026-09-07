@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/errors/validation_exception.dart';
 import '../../../core/formatters/money.dart';
 import '../application/catalog_providers.dart';
+import '../data/catalog_repository.dart';
 import '../domain/catalog_item.dart';
 
 class ProductFormDialog extends ConsumerStatefulWidget {
@@ -30,6 +31,9 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
   bool _saving = false;
   Uint8List? _image;
   late String _category;
+  final Map<String, int> _inclusions = {};
+  bool _inclusionsLoaded = false;
+  bool _inclusionsLoadFailed = false;
 
   bool get _editing => widget.item != null;
 
@@ -51,6 +55,31 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
     _threshold = TextEditingController(
       text: item?.lowStockThreshold.toString() ?? '5',
     );
+    _loadInclusions();
+  }
+
+  Future<void> _loadInclusions() async {
+    try {
+      final item = widget.item;
+      if (item != null) {
+        final inclusions = await ref
+            .read(catalogRepositoryProvider)
+            .getProductInclusions(item.productId);
+        for (final inclusion in inclusions) {
+          _inclusions[inclusion.inventoryItemId] = inclusion.quantity;
+        }
+      }
+      if (mounted) setState(() => _inclusionsLoaded = true);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _inclusionsLoaded = true;
+          _inclusionsLoadFailed = true;
+          _error =
+              'Unable to load product inclusions. Try reopening this form.';
+        });
+      }
+    }
   }
 
   @override
@@ -115,6 +144,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                 _field(_unit, 'Unit (serving, bottle, piece)'),
                 _field(_cost, 'Cost per unit', prefix: '₱', decimal: true),
                 _field(_threshold, 'Low-stock threshold', integer: true),
+                _inclusionEditor(),
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -136,10 +166,128 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _saving ? null : _save,
+          onPressed: _saving || !_inclusionsLoaded || _inclusionsLoadFailed
+              ? null
+              : _save,
           child: Text(_saving ? 'Saving…' : 'Save'),
         ),
       ],
+    );
+  }
+
+  Widget _inclusionEditor() {
+    final catalog = ref.watch(activeCatalogProvider);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 4),
+          Text('Inclusions', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'Select existing inventory deducted whenever this product is sold. Zero-stock items are allowed.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          if (!_inclusionsLoaded)
+            const Center(child: CircularProgressIndicator())
+          else if (_inclusionsLoadFailed)
+            const Text('Inclusions could not be loaded safely.')
+          else
+            catalog.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => const Text('Unable to load inventory items.'),
+              data: (items) {
+                final choices = items
+                    .where(
+                      (item) =>
+                          item.inventoryItemId != widget.item?.inventoryItemId,
+                    )
+                    .toList();
+                if (choices.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Add another inventory product first to use it as an inclusion.',
+                    ),
+                  );
+                }
+                return Column(
+                  children: choices.map((item) {
+                    final selected = _inclusions.containsKey(
+                      item.inventoryItemId,
+                    );
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: selected,
+                              onChanged: _saving
+                                  ? null
+                                  : (value) => setState(() {
+                                      if (value == true) {
+                                        _inclusions[item.inventoryItemId] = 1;
+                                      } else {
+                                        _inclusions.remove(
+                                          item.inventoryItemId,
+                                        );
+                                      }
+                                    }),
+                            ),
+                            Expanded(
+                              child: Text(
+                                '${item.name} (${item.stockQuantity} ${item.unit})',
+                              ),
+                            ),
+                            if (selected)
+                              SizedBox(
+                                width: 86,
+                                child: TextFormField(
+                                  key: ValueKey(
+                                    'inclusion-${item.inventoryItemId}',
+                                  ),
+                                  initialValue:
+                                      _inclusions[item.inventoryItemId]
+                                          .toString(),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Qty',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  validator: (value) {
+                                    final quantity = int.tryParse(
+                                      value?.trim() ?? '',
+                                    );
+                                    return quantity == null || quantity <= 0
+                                        ? 'Invalid'
+                                        : null;
+                                  },
+                                  onChanged: (value) {
+                                    final quantity = int.tryParse(value.trim());
+                                    if (quantity != null) {
+                                      _inclusions[item.inventoryItemId] =
+                                          quantity;
+                                    }
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 
@@ -226,13 +374,34 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
             : integer
             ? TextInputType.number
             : TextInputType.text,
-        validator: (value) =>
-            value == null || value.trim().isEmpty ? 'Required' : null,
+        maxLength: controller == _name
+            ? 120
+            : controller == _unit
+            ? 30
+            : null,
+        validator: (value) {
+          final text = value?.trim() ?? '';
+          if (text.isEmpty) return 'Required';
+          if (integer) {
+            final parsed = int.tryParse(text);
+            if (parsed == null) return 'Enter a whole number';
+            if (parsed < 0) return 'Cannot be negative';
+          }
+          if (decimal) {
+            try {
+              parsePhp(text);
+            } on ValidationException catch (error) {
+              return error.message;
+            }
+          }
+          return null;
+        },
       ),
     );
   }
 
   Future<void> _save() async {
+    if (_saving || !_inclusionsLoaded || _inclusionsLoadFailed) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() {
       _saving = true;
@@ -243,6 +412,14 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
       final price = parsePhp(_price.text);
       final cost = parsePhp(_cost.text);
       final threshold = int.parse(_threshold.text.trim());
+      final inclusions = _inclusions.entries
+          .map(
+            (entry) => ProductInclusionInput(
+              inventoryItemId: entry.key,
+              quantity: entry.value,
+            ),
+          )
+          .toList(growable: false);
       if (_editing) {
         await repository.updateProduct(
           productId: widget.item!.productId,
@@ -253,6 +430,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
           costPerUnit: cost,
           lowStockThreshold: threshold,
           imageData: _image,
+          inclusions: inclusions,
         );
       } else {
         await repository.createProduct(
@@ -264,6 +442,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
           costPerUnit: cost,
           lowStockThreshold: threshold,
           imageData: _image,
+          inclusions: inclusions,
         );
       }
       if (mounted) Navigator.pop(context);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:jm_pos/app/app.dart';
 import 'package:jm_pos/features/catalog/application/catalog_providers.dart';
 import 'package:jm_pos/features/catalog/domain/catalog_item.dart';
@@ -11,6 +12,16 @@ void main() {
   testWidgets('shows catalog navigation and opens the product form', (
     tester,
   ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('com.jmpos.jm_pos/activation'),
+          (call) async => {
+            'activated': true,
+            'installationId': 'TEST-DEVICE',
+            'requestPin': '123456',
+            'businessName': 'Test Store',
+          },
+        );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

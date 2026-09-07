@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Developer-only offline activation signing key. Never commit or share this.
+/.jmpos-license/
+
 # Symbolication related
 app.*.symbols
 

@@ -19,12 +19,14 @@ class PaymentDialog extends ConsumerStatefulWidget {
 class _PaymentDialogState extends ConsumerState<PaymentDialog> {
   String _method = 'CASH';
   final _cash = TextEditingController();
+  final _reference = TextEditingController();
   bool _saving = false;
   String? _error;
 
   @override
   void dispose() {
     _cash.dispose();
+    _reference.dispose();
     super.dispose();
   }
 
@@ -93,6 +95,18 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
                   ),
                 ],
               ),
+            ] else ...[
+              const SizedBox(height: 18),
+              TextField(
+                controller: _reference,
+                enabled: !_saving,
+                maxLength: 80,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'GCash / Maya transaction reference',
+                  prefixIcon: Icon(Icons.tag),
+                ),
+              ),
             ],
             if (_error != null)
               Padding(
@@ -132,6 +146,7 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
             cart: ref.read(cartProvider).lines,
             paymentMethod: _method,
             cashReceived: cash,
+            paymentReference: _method == 'GCASH' ? _reference.text : null,
           );
       ref.read(cartProvider.notifier).clear();
       await AppHaptics.success();

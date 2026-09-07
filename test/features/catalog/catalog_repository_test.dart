@@ -115,6 +115,66 @@ void main() {
     expect(inventory.stockQuantity, 2);
   });
 
+  test('stores inclusions only for existing active inventory items', () async {
+    final egg = await repository.createProduct(
+      name: 'Egg',
+      sellingPrice: 1500,
+      initialStock: 0,
+      unit: 'piece',
+      costPerUnit: 700,
+      lowStockThreshold: 4,
+    );
+    final meal = await repository.createProduct(
+      name: 'Sisig Silog',
+      sellingPrice: 12000,
+      initialStock: 5,
+      unit: 'meal',
+      costPerUnit: 5000,
+      lowStockThreshold: 2,
+      inclusions: [
+        ProductInclusionInput(
+          inventoryItemId: egg.inventoryItemId,
+          quantity: 1,
+        ),
+      ],
+    );
+
+    final inclusions = await repository.getProductInclusions(meal.productId);
+    expect(inclusions, hasLength(1));
+    expect(inclusions.single.inventoryItemId, egg.inventoryItemId);
+    expect(inclusions.single.quantity, 1);
+
+    await expectLater(
+      repository.updateProduct(
+        productId: meal.productId,
+        name: meal.name,
+        sellingPrice: meal.sellingPrice,
+        unit: meal.unit,
+        costPerUnit: meal.costPerUnit,
+        lowStockThreshold: meal.lowStockThreshold,
+        inclusions: const [
+          ProductInclusionInput(
+            inventoryItemId: 'missing-inventory',
+            quantity: 1,
+          ),
+        ],
+      ),
+      throwsA(isA<ValidationException>()),
+    );
+    expect(await repository.getProductInclusions(meal.productId), hasLength(1));
+
+    await expectLater(
+      repository.setActive(egg.productId, isActive: false),
+      throwsA(
+        isA<ValidationException>().having(
+          (error) => error.message,
+          'message',
+          contains('included in Sisig Silog'),
+        ),
+      ),
+    );
+  });
+
   test('deactivation hides a product without deleting it', () async {
     final item = await repository.createProduct(
       name: 'Longsilog',

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,36 +13,62 @@ import '../../database/app_database.dart';
 class BackupService {
   BackupService(this._database);
   final AppDatabase _database;
+  static const _channel = MethodChannel('com.jmpos.jm_pos/backup');
 
   Future<File> createBackup() async {
-    final temporary = await getTemporaryDirectory();
-    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final file = File(p.join(temporary.path, 'jmpos-backup-$stamp.sqlite'));
-    if (await file.exists()) await file.delete();
-    final escaped = file.path.replaceAll("'", "''");
-    await _database.customStatement("VACUUM INTO '$escaped'");
-    return file;
+    final path = await _channel.invokeMethod<String>('create');
+    if (path == null) {
+      throw const ValidationException('Unable to create the encrypted backup.');
+    }
+    return File(path);
   }
 
   Future<void> shareBackup() async {
     final file = await createBackup();
     await SharePlus.instance.share(
       ShareParams(
-        files: [XFile(file.path, mimeType: 'application/vnd.sqlite3')],
-        subject: 'JmPOS local backup',
+        files: [XFile(file.path, mimeType: 'application/octet-stream')],
+        subject: 'JmPOS encrypted backup',
       ),
     );
   }
 
-  Future<bool> pickAndRestore() async {
+  Future<bool> pickAndRestore({required String password}) async {
     final result = await FilePicker.pickFile(
       type: FileType.custom,
-      allowedExtensions: const ['sqlite', 'db'],
+      allowedExtensions: const ['jmpos'],
     );
     final selectedPath = result?.path;
     if (selectedPath == null) return false;
-    await restore(File(selectedPath));
+    final decryptedPath = await _channel.invokeMethod<String>('decrypt', {
+      'path': selectedPath,
+      'password': password,
+    });
+    if (decryptedPath == null) {
+      throw const ValidationException('Unable to decrypt the backup.');
+    }
+    await restore(File(decryptedPath));
     return true;
+  }
+
+  Future<BackupStatus> status() async {
+    final result = await _channel.invokeMapMethod<Object?, Object?>('status');
+    return BackupStatus.fromMap(result ?? const {});
+  }
+
+  Future<BackupStatus> configure(String password) async {
+    final result = await _channel.invokeMapMethod<Object?, Object?>(
+      'configure',
+      {'password': password},
+    );
+    return BackupStatus.fromMap(result ?? const {});
+  }
+
+  Future<BackupStatus> backupNow() async {
+    final result = await _channel.invokeMapMethod<Object?, Object?>(
+      'backupNow',
+    );
+    return BackupStatus.fromMap(result ?? const {});
   }
 
   Future<void> restore(File candidate) async {
@@ -100,5 +127,31 @@ class BackupService {
     } finally {
       db?.close();
     }
+  }
+}
+
+class BackupStatus {
+  const BackupStatus({
+    required this.configured,
+    required this.folder,
+    required this.schedule,
+    this.lastBackupAt,
+  });
+
+  final bool configured;
+  final String folder;
+  final String schedule;
+  final DateTime? lastBackupAt;
+
+  factory BackupStatus.fromMap(Map<Object?, Object?> value) {
+    final millis = value['lastBackupAt'] as int?;
+    return BackupStatus(
+      configured: value['configured'] == true,
+      folder: value['folder'] as String? ?? 'Downloads/JmPOS/database-backup',
+      schedule: value['schedule'] as String? ?? '10:00 AM, 3:00 PM, 10:00 PM',
+      lastBackupAt: millis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(millis),
+    );
   }
 }

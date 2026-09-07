@@ -6,13 +6,29 @@ import '../../core/formatters/money.dart';
 import '../../database/app_database.dart';
 
 class ReceiptService {
-  Future<List<BluetoothInfo>> pairedPrinters() =>
-      PrintBluetoothThermal.pairedBluetooths;
+  Future<void> _ensureBluetoothReady() async {
+    final permissionGranted =
+        await PrintBluetoothThermal.isPermissionBluetoothGranted;
+    if (!permissionGranted) {
+      throw const ValidationException(
+        'Allow Nearby devices permission to use the Bluetooth printer.',
+      );
+    }
+    if (!await PrintBluetoothThermal.bluetoothEnabled) {
+      throw const ValidationException('Turn on Bluetooth, then try again.');
+    }
+  }
+
+  Future<List<BluetoothInfo>> pairedPrinters() async {
+    await _ensureBluetoothReady();
+    return PrintBluetoothThermal.pairedBluetooths;
+  }
 
   Future<void> printReceipt({
     required Setting settings,
     required Sale sale,
     required List<SaleItem> items,
+    bool isReprint = false,
   }) async {
     final address = settings.printerAddress;
     if (address == null || address.isEmpty) {
@@ -20,6 +36,7 @@ class ReceiptService {
         'Select a Bluetooth printer in Settings.',
       );
     }
+    await _ensureBluetoothReady();
     final connected = await PrintBluetoothThermal.connect(
       macPrinterAddress: address,
     );
@@ -30,6 +47,7 @@ class ReceiptService {
       settings: settings,
       sale: sale,
       items: items,
+      isReprint: isReprint,
     );
     if (!await PrintBluetoothThermal.writeBytes(bytes)) {
       throw const ValidationException(
@@ -42,6 +60,7 @@ class ReceiptService {
     required Setting settings,
     required Sale sale,
     required List<SaleItem> items,
+    bool isReprint = false,
   }) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(
@@ -49,6 +68,14 @@ class ReceiptService {
       profile,
     );
     final bytes = <int>[];
+    if (isReprint) {
+      bytes.addAll(
+        generator.text(
+          'REPRINT',
+          styles: const PosStyles(align: PosAlign.center, bold: true),
+        ),
+      );
+    }
     bytes.addAll(
       generator.text(
         settings.businessName,
@@ -73,6 +100,13 @@ class ReceiptService {
       ),
     );
     bytes.addAll(generator.hr());
+    bytes.addAll(
+      generator.text(
+        sale.orderType == 'DINE_IN'
+            ? 'Order: Dine in'
+            : 'Order: Take out - ${sale.fulfillmentType == 'DELIVERY' ? 'Delivery' : 'Pickup'}',
+      ),
+    );
     for (final item in items) {
       bytes.addAll(generator.text('${item.productName} x${item.quantity}'));
       bytes.addAll(

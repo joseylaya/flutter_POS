@@ -31,6 +31,7 @@ void main() {
       ).complete(
         cart: [CartLine(item: product, quantity: 2)],
         paymentMethod: 'GCASH',
+        paymentReference: 'REF-REPORT',
       );
       await ExpenseRepository(database, generateId: nextId).add(
         name: 'Electricity',
@@ -48,6 +49,41 @@ void main() {
       expect(summary.expenses, 1000);
       expect(summary.netProfit, 10000);
       expect(summary.orders, 1);
+
+      final sale = (await database.select(database.sales).get()).single;
+      await ReportsRepository(database, generateId: nextId).reverseSale(
+        saleId: sale.id,
+        reversalType: 'REFUND',
+        reason: 'Customer returned the order',
+      );
+      final reversedSummary = await ReportsRepository(
+        database,
+      ).watchSummary(DateTime(2026, 9, 2), DateTime(2026, 9, 3)).first;
+      expect(reversedSummary.sales, 0);
+      expect(reversedSummary.cost, 0);
+      expect(reversedSummary.grossProfit, 0);
+      expect(reversedSummary.orders, 0);
+      expect(reversedSummary.expenses, 1000);
+      expect(reversedSummary.netProfit, -1000);
+      expect(
+        (await database.select(database.inventoryItems).getSingle())
+            .stockQuantity,
+        5,
+      );
+
+      await expectLater(
+        ReportsRepository(database, generateId: nextId).reverseSale(
+          saleId: sale.id,
+          reversalType: 'REFUND',
+          reason: 'Duplicate refund attempt',
+        ),
+        throwsA(isA<Exception>()),
+      );
+      expect(
+        (await database.select(database.inventoryItems).getSingle())
+            .stockQuantity,
+        5,
+      );
     },
   );
 }

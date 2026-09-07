@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/money.dart';
+import '../../../core/errors/validation_exception.dart';
 import '../../../core/services/app_haptics.dart';
 import '../../printing/receipt_service.dart';
 import '../../settings/application/settings_providers.dart';
@@ -110,20 +111,72 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 : Column(
                     children: items
                         .map(
-                          (sale) => Card(
+                          (entry) => Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
-                              leading: const Icon(Icons.receipt_long),
+                              leading: Icon(
+                                entry.isReversed
+                                    ? Icons.undo
+                                    : Icons.receipt_long,
+                                color: entry.isReversed
+                                    ? Theme.of(context).colorScheme.error
+                                    : null,
+                              ),
                               title: Text(
-                                '#${sale.transactionNumber.toString().padLeft(6, '0')} • ${formatPhp(sale.totalAmount)}',
+                                '#${entry.sale.transactionNumber.toString().padLeft(6, '0')} • ${formatPhp(entry.sale.totalAmount)}',
+                                style: TextStyle(
+                                  decoration: entry.isReversed
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                ),
                               ),
                               subtitle: Text(
-                                '${sale.paymentMethod}${sale.paymentReference == null ? '' : ' • Ref ${sale.paymentReference}'} • ${sale.completedAt}',
+                                '${entry.isReversed ? '${entry.reversal!.reversalType == 'REFUND' ? 'REFUNDED' : 'CANCELLED'} • ${entry.reversal!.reason}\n' : ''}${entry.sale.orderType == 'DINE_IN' ? 'Dine in' : 'Take out • ${entry.sale.fulfillmentType == 'DELIVERY' ? 'Delivery' : 'Pickup'}'} • ${entry.sale.paymentMethod}${entry.sale.paymentReference == null ? '' : ' • Ref ${entry.sale.paymentReference}'} • ${entry.sale.completedAt}',
                               ),
-                              trailing: IconButton(
-                                tooltip: 'Print receipt',
-                                icon: const Icon(Icons.print_outlined),
-                                onPressed: () => _print(context, ref, sale.id),
+                              isThreeLine: entry.isReversed,
+                              trailing: PopupMenuButton<String>(
+                                tooltip: 'Transaction actions',
+                                onSelected: (action) {
+                                  if (action == 'REPRINT') {
+                                    _print(context, ref, entry.sale.id);
+                                  } else {
+                                    _reverse(
+                                      context,
+                                      ref,
+                                      entry.sale.id,
+                                      action,
+                                    );
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  const PopupMenuItem(
+                                    value: 'REPRINT',
+                                    child: ListTile(
+                                      leading: Icon(Icons.print_outlined),
+                                      title: Text('Reprint receipt'),
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                  ),
+                                  if (!entry.isReversed) ...[
+                                    const PopupMenuDivider(),
+                                    const PopupMenuItem(
+                                      value: 'CANCELLATION',
+                                      child: ListTile(
+                                        leading: Icon(Icons.cancel_outlined),
+                                        title: Text('Cancel sale'),
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'REFUND',
+                                      child: ListTile(
+                                        leading: Icon(Icons.currency_exchange),
+                                        title: Text('Refund sale'),
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ),
@@ -146,13 +199,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       final sale = ref
           .read(salesHistoryProvider)
           .valueOrNull!
-          .firstWhere((item) => item.id == saleId);
+          .firstWhere((item) => item.sale.id == saleId)
+          .sale;
       final items = await ref.read(reportsRepositoryProvider).saleItems(saleId);
       final settings = await ref.read(settingsRepositoryProvider).get();
       await ReceiptService().printReceipt(
         settings: settings,
         sale: sale,
         items: items,
+        isReprint: true,
       );
       await AppHaptics.light();
       if (context.mounted) {
@@ -166,6 +221,109 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('$error')));
       }
+    }
+  }
+
+  Future<void> _reverse(
+    BuildContext context,
+    WidgetRef ref,
+    String saleId,
+    String reversalType,
+  ) async {
+    final label = reversalType == 'REFUND' ? 'Refund' : 'Cancel';
+    final reason = TextEditingController();
+    String? error;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('$label sale'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'This restores all product and inclusion stock and removes the sale from revenue reports. The audit record cannot be reversed.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reason,
+                  autofocus: true,
+                  maxLength: 250,
+                  minLines: 2,
+                  maxLines: 4,
+                  onChanged: (_) => setDialogState(() => error = null),
+                  decoration: InputDecoration(
+                    labelText: 'Reason',
+                    hintText: reversalType == 'REFUND'
+                        ? 'Example: Customer returned the order'
+                        : 'Example: Duplicate order',
+                    errorText: error,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Keep sale'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (reason.text.trim().length < 3) {
+                  setDialogState(() => error = 'Enter at least 3 characters.');
+                  return;
+                }
+                Navigator.pop(dialogContext, true);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: Text('$label and restore stock'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) {
+      reason.dispose();
+      return;
+    }
+    try {
+      await ref
+          .read(reportsRepositoryProvider)
+          .reverseSale(
+            saleId: saleId,
+            reversalType: reversalType,
+            reason: reason.text,
+          );
+      await AppHaptics.success();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label completed and stock restored.')),
+        );
+      }
+    } on ValidationException catch (exception) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(exception.message)));
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to reverse the sale. Nothing was changed.'),
+          ),
+        );
+      }
+    } finally {
+      reason.dispose();
     }
   }
 }

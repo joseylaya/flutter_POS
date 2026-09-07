@@ -472,45 +472,29 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
                           child: TweenAnimationBuilder<double>(
                             key: ValueKey(feedbackTick),
                             tween: Tween(begin: 0, end: 1),
-                            duration: const Duration(milliseconds: 650),
-                            curve: Curves.easeOutCubic,
-                            builder: (context, progress, child) => Opacity(
-                              opacity: 1 - progress,
-                              child: Transform.translate(
-                                offset: Offset(0, -42 * progress),
-                                child: Transform.scale(
-                                  scale: .85 + (.2 * (1 - progress)),
+                            duration: const Duration(milliseconds: 1100),
+                            curve: Curves.easeOutQuart,
+                            builder: (context, progress, child) {
+                              final fade = ((progress - .28) / .72).clamp(
+                                0.0,
+                                1.0,
+                              );
+                              return Opacity(
+                                opacity: 1 - fade,
+                                child: Transform.translate(
+                                  offset: Offset(0, -58 * progress),
                                   child: child,
                                 ),
-                              ),
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color:
-                                    (widget.addMode
-                                            ? const Color(0xFF10B981)
-                                            : const Color(0xFFEF4444))
-                                        .withValues(alpha: .94),
-                                borderRadius: BorderRadius.circular(99),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black38,
-                                    blurRadius: 12,
-                                    offset: Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                widget.addMode ? '+1' : '−1',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                              );
+                            },
+                            child: Text(
+                              widget.addMode ? '+1' : '−1',
+                              style: TextStyle(
+                                color: widget.addMode
+                                    ? const Color(0xFF34D399)
+                                    : const Color(0xFFF87171),
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),

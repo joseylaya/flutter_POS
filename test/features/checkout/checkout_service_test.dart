@@ -8,6 +8,7 @@ import 'package:jm_pos/features/checkout/domain/sale_quote.dart';
 import 'package:jm_pos/features/discounts/data/discount_repository.dart';
 import 'package:jm_pos/features/pos/domain/cart.dart';
 import 'package:jm_pos/features/printing/receipt_service.dart';
+import 'package:jm_pos/features/reports/data/reports_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -116,6 +117,13 @@ void main() {
       expect(receipt, isNotEmpty);
       expect(receiptText, contains('Sisig Meal'));
       expect(receiptText, contains('Transaction #000001'));
+      final reprint = await ReceiptService().buildReceiptBytes(
+        settings: await database.select(database.settings).getSingle(),
+        sale: result.sale,
+        items: saleItems,
+        isReprint: true,
+      );
+      expect(String.fromCharCodes(reprint), contains('REPRINT'));
     },
   );
 
@@ -131,10 +139,15 @@ void main() {
         lowStockThreshold: 2,
       );
       final cart = [CartLine(item: product, quantity: 2)];
-      final first = await checkout.complete(cart: cart, paymentMethod: 'GCASH');
+      final first = await checkout.complete(
+        cart: cart,
+        paymentMethod: 'GCASH',
+        paymentReference: 'REF-1',
+      );
       final second = await checkout.complete(
         cart: cart,
         paymentMethod: 'GCASH',
+        paymentReference: 'REF-2',
       );
 
       expect(first.sale.transactionNumber, 1);
@@ -144,6 +157,88 @@ void main() {
             .stockQuantity,
         -3,
       );
+    },
+  );
+
+  test(
+    'deducts multiple inclusions and includes their cost when a meal is sold',
+    () async {
+      final egg = await catalog.createProduct(
+        name: 'Egg',
+        sellingPrice: 1500,
+        initialStock: 0,
+        unit: 'piece',
+        costPerUnit: 700,
+        lowStockThreshold: 5,
+      );
+      final softDrink = await catalog.createProduct(
+        name: 'Soft drink',
+        sellingPrice: 2500,
+        initialStock: 10,
+        unit: 'bottle',
+        costPerUnit: 1200,
+        lowStockThreshold: 3,
+      );
+      final meal = await catalog.createProduct(
+        name: 'Sisig Silog',
+        sellingPrice: 12000,
+        initialStock: 5,
+        unit: 'meal',
+        costPerUnit: 5000,
+        lowStockThreshold: 2,
+        inclusions: [
+          ProductInclusionInput(
+            inventoryItemId: egg.inventoryItemId,
+            quantity: 1,
+          ),
+          ProductInclusionInput(
+            inventoryItemId: softDrink.inventoryItemId,
+            quantity: 2,
+          ),
+        ],
+      );
+
+      final result = await checkout.complete(
+        cart: [CartLine(item: meal, quantity: 2)],
+        paymentMethod: 'GCASH',
+        paymentReference: 'REF-INCLUSION',
+      );
+
+      final inventory = {
+        for (final item in await database.select(database.inventoryItems).get())
+          item.id: item.stockQuantity,
+      };
+      expect(inventory[meal.inventoryItemId], 3);
+      expect(inventory[egg.inventoryItemId], -2);
+      expect(inventory[softDrink.inventoryItemId], 6);
+      expect(result.quote.totalCost, 16200);
+      final movements = await (database.select(
+        database.inventoryMovements,
+      )..where((table) => table.movementType.equals('SALE'))).get();
+      expect(movements, hasLength(3));
+      expect(
+        movements
+            .where((movement) => movement.referenceType == 'SALE_INCLUSION')
+            .map((movement) => movement.quantity),
+        containsAll([-2, -4]),
+      );
+
+      var reversalId = 0;
+      await ReportsRepository(
+        database,
+        generateId: () => 'reversal-${reversalId++}',
+      ).reverseSale(
+        saleId: result.sale.id,
+        reversalType: 'CANCELLATION',
+        reason: 'Customer cancelled order',
+      );
+      final restoredInventory = {
+        for (final item in await database.select(database.inventoryItems).get())
+          item.id: item.stockQuantity,
+      };
+      expect(restoredInventory[meal.inventoryItemId], 5);
+      expect(restoredInventory[egg.inventoryItemId], 0);
+      expect(restoredInventory[softDrink.inventoryItemId], 10);
     },
   );
 
@@ -178,4 +273,73 @@ void main() {
       1,
     );
   });
+
+  test('stores take-out delivery method and validates its selection', () async {
+    final product = await catalog.createProduct(
+      name: 'Tapsilog',
+      sellingPrice: 12000,
+      initialStock: 5,
+      unit: 'meal',
+      costPerUnit: 7000,
+      lowStockThreshold: 2,
+    );
+    final cart = [CartLine(item: product, quantity: 1)];
+
+    await expectLater(
+      checkout.complete(
+        cart: cart,
+        paymentMethod: 'GCASH',
+        paymentReference: 'REF-INVALID-FULFILLMENT',
+        orderType: 'TAKE_OUT',
+      ),
+      throwsA(isA<ValidationException>()),
+    );
+
+    final result = await checkout.complete(
+      cart: cart,
+      paymentMethod: 'GCASH',
+      paymentReference: 'REF-DELIVERY',
+      orderType: 'TAKE_OUT',
+      fulfillmentType: 'DELIVERY',
+    );
+    expect(result.sale.orderType, 'TAKE_OUT');
+    expect(result.sale.fulfillmentType, 'DELIVERY');
+  });
+
+  test(
+    'rejects inconsistent order and payment details before writing',
+    () async {
+      final product = await catalog.createProduct(
+        name: 'Tapsilog',
+        sellingPrice: 12000,
+        initialStock: 5,
+        unit: 'serving',
+        costPerUnit: 7000,
+        lowStockThreshold: 2,
+      );
+      final cart = [CartLine(item: product, quantity: 1)];
+
+      await expectLater(
+        checkout.complete(cart: cart, paymentMethod: 'GCASH'),
+        throwsA(isA<ValidationException>()),
+      );
+      await expectLater(
+        checkout.complete(
+          cart: cart,
+          paymentMethod: 'CASH',
+          cashReceived: 12000,
+          orderType: 'DINE_IN',
+          fulfillmentType: 'DELIVERY',
+        ),
+        throwsA(isA<ValidationException>()),
+      );
+
+      expect(await database.select(database.sales).get(), isEmpty);
+      expect(
+        (await database.select(database.inventoryItems).getSingle())
+            .stockQuantity,
+        5,
+      );
+    },
+  );
 }

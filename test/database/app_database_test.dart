@@ -12,7 +12,7 @@ void main() {
 
   tearDown(() => database.close());
 
-  test('creates the nine-table schema and default settings', () async {
+  test('creates the eleven-table schema and default settings', () async {
     final tables = await database
         .customSelect(
           "SELECT name FROM sqlite_master WHERE type = 'table' "
@@ -26,8 +26,10 @@ void main() {
       'expenses',
       'inventory_items',
       'inventory_movements',
+      'product_inclusions',
       'products',
       'sale_items',
+      'sale_reversals',
       'sales',
       'settings',
     });

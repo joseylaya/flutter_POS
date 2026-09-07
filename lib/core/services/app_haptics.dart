@@ -6,9 +6,9 @@ class AppHaptics {
   static const _channel = MethodChannel('com.jmpos.jm_pos/haptics');
 
   static Future<void> selection() =>
-      _vibrate('selection', HapticFeedback.selectionClick);
+      _vibrate('selection', HapticFeedback.mediumImpact);
 
-  static Future<void> light() => _vibrate('light', HapticFeedback.lightImpact);
+  static Future<void> light() => _vibrate('light', HapticFeedback.heavyImpact);
 
   static Future<void> medium() =>
       _vibrate('medium', HapticFeedback.mediumImpact);
@@ -26,8 +26,10 @@ class AppHaptics {
       await _channel.invokeMethod<void>('vibrate', pattern);
     } on MissingPluginException {
       await fallback();
+      await SystemSound.play(SystemSoundType.click);
     } on PlatformException {
       await fallback();
+      await SystemSound.play(SystemSoundType.click);
     }
   }
 }

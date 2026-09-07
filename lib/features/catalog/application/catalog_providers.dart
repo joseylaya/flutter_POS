@@ -11,3 +11,8 @@ final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
 final activeCatalogProvider = StreamProvider<List<CatalogItem>>((ref) {
   return ref.watch(catalogRepositoryProvider).watchCatalog();
 });
+
+final productInclusionsProvider = FutureProvider.family(
+  (ref, String productId) =>
+      ref.watch(catalogRepositoryProvider).getProductInclusions(productId),
+);
