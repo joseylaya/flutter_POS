@@ -1,4 +1,6 @@
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 import '../../core/errors/validation_exception.dart';
@@ -68,6 +70,7 @@ class ReceiptService {
       profile,
     );
     final bytes = <int>[];
+    bytes.addAll(const [0x1B, 0x32]);
     if (isReprint) {
       bytes.addAll(
         generator.text(
@@ -75,6 +78,10 @@ class ReceiptService {
           styles: const PosStyles(align: PosAlign.center, bold: true),
         ),
       );
+    }
+    final logo = await _receiptLogo(settings.printerPaperWidthMm);
+    if (logo != null) {
+      bytes.addAll(generator.image(logo, align: PosAlign.center));
     }
     bytes.addAll(
       generator.text(
@@ -87,6 +94,29 @@ class ReceiptService {
         ),
       ),
     );
+    if (settings.receiptTagline.isNotEmpty) {
+      bytes.addAll(
+        generator.text(
+          settings.receiptTagline,
+          styles: const PosStyles(align: PosAlign.center),
+        ),
+      );
+    }
+    if (settings.businessHours.isNotEmpty) {
+      for (final line in settings.businessHours.split('\n')) {
+        bytes.addAll(
+          generator.text(line, styles: const PosStyles(align: PosAlign.center)),
+        );
+      }
+    }
+    if (settings.businessAddress.isNotEmpty) {
+      bytes.addAll(
+        generator.text(
+          settings.businessAddress,
+          styles: const PosStyles(align: PosAlign.center),
+        ),
+      );
+    }
     bytes.addAll(
       generator.text(
         _dateTime(sale.completedAt),
@@ -107,15 +137,20 @@ class ReceiptService {
             : 'Order: Take out - ${sale.fulfillmentType == 'DELIVERY' ? 'Delivery' : 'Pickup'}',
       ),
     );
+    bytes.addAll(const [0x1B, 0x33, 40]);
     for (final item in items) {
-      bytes.addAll(generator.text('${item.productName} x${item.quantity}'));
       bytes.addAll(
-        generator.text(
-          _receiptMoney(item.lineTotal),
-          styles: const PosStyles(align: PosAlign.right),
-        ),
+        generator.row([
+          PosColumn(text: '${item.productName} x${item.quantity}', width: 8),
+          PosColumn(
+            text: _receiptMoney(item.lineTotal),
+            width: 4,
+            styles: const PosStyles(align: PosAlign.right),
+          ),
+        ]),
       );
     }
+    bytes.addAll(const [0x1B, 0x32]);
     bytes.addAll(generator.hr());
     bytes.addAll(
       generator.row([
@@ -168,8 +203,9 @@ class ReceiptService {
         styles: const PosStyles(align: PosAlign.center),
       ),
     );
-    bytes.addAll(generator.feed(2));
-    bytes.addAll(generator.cut());
+    bytes.addAll(const [0x1B, 0x32]);
+    bytes.addAll(generator.feed(1));
+    bytes.addAll(const [0x1D, 0x56, 0x30]);
     return bytes;
   }
 
@@ -179,4 +215,26 @@ class ReceiptService {
 
   String _receiptMoney(int centavos) =>
       formatPhp(centavos).replaceFirst('₱', 'PHP ');
+
+  Future<img.Image?> _receiptLogo(int paperWidthMm) async {
+    try {
+      final data = await rootBundle.load(
+        'assets/images/bradz-silogan-receipt-logo.png',
+      );
+      final decoded = img.decodeImage(data.buffer.asUint8List());
+      if (decoded == null) return null;
+      final cropped = img.trim(
+        decoded,
+        mode: img.TrimMode.transparent,
+        padding: 12,
+      );
+      return img.copyResize(
+        cropped,
+        width: paperWidthMm == 80 ? 300 : 220,
+        interpolation: img.Interpolation.average,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 }

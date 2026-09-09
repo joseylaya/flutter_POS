@@ -14,7 +14,19 @@ abstract class EntityTable extends Table {
 
 class Settings extends Table {
   IntColumn get id => integer().withDefault(const Constant(1))();
-  TextColumn get businessName => text().withDefault(const Constant('JmPOS'))();
+  TextColumn get businessName =>
+      text().withDefault(const Constant('BRADZ SILOGAN'))();
+  TextColumn get receiptTagline =>
+      text().withDefault(const Constant('Savoring every bite'))();
+  TextColumn get businessHours => text().withDefault(
+    const Constant(
+      'Mon-Tue 10:00 AM - 10:00 PM\n'
+      'Wed - CLOSED\n'
+      'Thu-Sun 10:00 AM - 10:00 PM',
+    ),
+  )();
+  TextColumn get businessAddress =>
+      text().withDefault(const Constant('BNCA Basak Lapu-Lapu City'))();
   TextColumn get receiptFooter =>
       text().withDefault(const Constant('Thank you!'))();
   TextColumn get currency => text().withDefault(const Constant('PHP'))();
@@ -312,7 +324,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -382,6 +394,21 @@ class AppDatabase extends _$AppDatabase {
         await migrator.createTable(saleReversals);
         await customStatement(
           'CREATE INDEX sale_reversals_date_idx ON sale_reversals (reversed_at)',
+        );
+      }
+      if (from < 10) {
+        if (!await _hasColumn('settings', 'receipt_tagline')) {
+          await migrator.addColumn(settings, settings.receiptTagline);
+        }
+        if (!await _hasColumn('settings', 'business_hours')) {
+          await migrator.addColumn(settings, settings.businessHours);
+        }
+        if (!await _hasColumn('settings', 'business_address')) {
+          await migrator.addColumn(settings, settings.businessAddress);
+        }
+        await customStatement(
+          "UPDATE settings SET business_name = 'BRADZ SILOGAN' "
+          "WHERE business_name = 'JmPOS'",
         );
       }
     },

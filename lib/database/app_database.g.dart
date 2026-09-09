@@ -28,7 +28,47 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('JmPOS'),
+    defaultValue: const Constant('BRADZ SILOGAN'),
+  );
+  static const VerificationMeta _receiptTaglineMeta = const VerificationMeta(
+    'receiptTagline',
+  );
+  @override
+  late final GeneratedColumn<String> receiptTagline = GeneratedColumn<String>(
+    'receipt_tagline',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('Savoring every bite'),
+  );
+  static const VerificationMeta _businessHoursMeta = const VerificationMeta(
+    'businessHours',
+  );
+  @override
+  late final GeneratedColumn<String> businessHours = GeneratedColumn<String>(
+    'business_hours',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(
+      'Mon-Tue 10:00 AM - 10:00 PM\n'
+      'Wed - CLOSED\n'
+      'Thu-Sun 10:00 AM - 10:00 PM',
+    ),
+  );
+  static const VerificationMeta _businessAddressMeta = const VerificationMeta(
+    'businessAddress',
+  );
+  @override
+  late final GeneratedColumn<String> businessAddress = GeneratedColumn<String>(
+    'business_address',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('BNCA Basak Lapu-Lapu City'),
   );
   static const VerificationMeta _receiptFooterMeta = const VerificationMeta(
     'receiptFooter',
@@ -144,6 +184,9 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
   List<GeneratedColumn> get $columns => [
     id,
     businessName,
+    receiptTagline,
+    businessHours,
+    businessAddress,
     receiptFooter,
     currency,
     printerName,
@@ -175,6 +218,33 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         businessName.isAcceptableOrUnknown(
           data['business_name']!,
           _businessNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('receipt_tagline')) {
+      context.handle(
+        _receiptTaglineMeta,
+        receiptTagline.isAcceptableOrUnknown(
+          data['receipt_tagline']!,
+          _receiptTaglineMeta,
+        ),
+      );
+    }
+    if (data.containsKey('business_hours')) {
+      context.handle(
+        _businessHoursMeta,
+        businessHours.isAcceptableOrUnknown(
+          data['business_hours']!,
+          _businessHoursMeta,
+        ),
+      );
+    }
+    if (data.containsKey('business_address')) {
+      context.handle(
+        _businessAddressMeta,
+        businessAddress.isAcceptableOrUnknown(
+          data['business_address']!,
+          _businessAddressMeta,
         ),
       );
     }
@@ -264,6 +334,18 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.string,
         data['${effectivePrefix}business_name'],
       )!,
+      receiptTagline: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}receipt_tagline'],
+      )!,
+      businessHours: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_hours'],
+      )!,
+      businessAddress: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_address'],
+      )!,
       receiptFooter: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}receipt_footer'],
@@ -312,6 +394,9 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
 class Setting extends DataClass implements Insertable<Setting> {
   final int id;
   final String businessName;
+  final String receiptTagline;
+  final String businessHours;
+  final String businessAddress;
   final String receiptFooter;
   final String currency;
   final String? printerName;
@@ -324,6 +409,9 @@ class Setting extends DataClass implements Insertable<Setting> {
   const Setting({
     required this.id,
     required this.businessName,
+    required this.receiptTagline,
+    required this.businessHours,
+    required this.businessAddress,
     required this.receiptFooter,
     required this.currency,
     this.printerName,
@@ -339,6 +427,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['business_name'] = Variable<String>(businessName);
+    map['receipt_tagline'] = Variable<String>(receiptTagline);
+    map['business_hours'] = Variable<String>(businessHours);
+    map['business_address'] = Variable<String>(businessAddress);
     map['receipt_footer'] = Variable<String>(receiptFooter);
     map['currency'] = Variable<String>(currency);
     if (!nullToAbsent || printerName != null) {
@@ -359,6 +450,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     return SettingsCompanion(
       id: Value(id),
       businessName: Value(businessName),
+      receiptTagline: Value(receiptTagline),
+      businessHours: Value(businessHours),
+      businessAddress: Value(businessAddress),
       receiptFooter: Value(receiptFooter),
       currency: Value(currency),
       printerName: printerName == null && nullToAbsent
@@ -383,6 +477,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     return Setting(
       id: serializer.fromJson<int>(json['id']),
       businessName: serializer.fromJson<String>(json['businessName']),
+      receiptTagline: serializer.fromJson<String>(json['receiptTagline']),
+      businessHours: serializer.fromJson<String>(json['businessHours']),
+      businessAddress: serializer.fromJson<String>(json['businessAddress']),
       receiptFooter: serializer.fromJson<String>(json['receiptFooter']),
       currency: serializer.fromJson<String>(json['currency']),
       printerName: serializer.fromJson<String?>(json['printerName']),
@@ -404,6 +501,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'businessName': serializer.toJson<String>(businessName),
+      'receiptTagline': serializer.toJson<String>(receiptTagline),
+      'businessHours': serializer.toJson<String>(businessHours),
+      'businessAddress': serializer.toJson<String>(businessAddress),
       'receiptFooter': serializer.toJson<String>(receiptFooter),
       'currency': serializer.toJson<String>(currency),
       'printerName': serializer.toJson<String?>(printerName),
@@ -419,6 +519,9 @@ class Setting extends DataClass implements Insertable<Setting> {
   Setting copyWith({
     int? id,
     String? businessName,
+    String? receiptTagline,
+    String? businessHours,
+    String? businessAddress,
     String? receiptFooter,
     String? currency,
     Value<String?> printerName = const Value.absent(),
@@ -431,6 +534,9 @@ class Setting extends DataClass implements Insertable<Setting> {
   }) => Setting(
     id: id ?? this.id,
     businessName: businessName ?? this.businessName,
+    receiptTagline: receiptTagline ?? this.receiptTagline,
+    businessHours: businessHours ?? this.businessHours,
+    businessAddress: businessAddress ?? this.businessAddress,
     receiptFooter: receiptFooter ?? this.receiptFooter,
     currency: currency ?? this.currency,
     printerName: printerName.present ? printerName.value : this.printerName,
@@ -449,6 +555,15 @@ class Setting extends DataClass implements Insertable<Setting> {
       businessName: data.businessName.present
           ? data.businessName.value
           : this.businessName,
+      receiptTagline: data.receiptTagline.present
+          ? data.receiptTagline.value
+          : this.receiptTagline,
+      businessHours: data.businessHours.present
+          ? data.businessHours.value
+          : this.businessHours,
+      businessAddress: data.businessAddress.present
+          ? data.businessAddress.value
+          : this.businessAddress,
       receiptFooter: data.receiptFooter.present
           ? data.receiptFooter.value
           : this.receiptFooter,
@@ -476,6 +591,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     return (StringBuffer('Setting(')
           ..write('id: $id, ')
           ..write('businessName: $businessName, ')
+          ..write('receiptTagline: $receiptTagline, ')
+          ..write('businessHours: $businessHours, ')
+          ..write('businessAddress: $businessAddress, ')
           ..write('receiptFooter: $receiptFooter, ')
           ..write('currency: $currency, ')
           ..write('printerName: $printerName, ')
@@ -493,6 +611,9 @@ class Setting extends DataClass implements Insertable<Setting> {
   int get hashCode => Object.hash(
     id,
     businessName,
+    receiptTagline,
+    businessHours,
+    businessAddress,
     receiptFooter,
     currency,
     printerName,
@@ -509,6 +630,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       (other is Setting &&
           other.id == this.id &&
           other.businessName == this.businessName &&
+          other.receiptTagline == this.receiptTagline &&
+          other.businessHours == this.businessHours &&
+          other.businessAddress == this.businessAddress &&
           other.receiptFooter == this.receiptFooter &&
           other.currency == this.currency &&
           other.printerName == this.printerName &&
@@ -523,6 +647,9 @@ class Setting extends DataClass implements Insertable<Setting> {
 class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<int> id;
   final Value<String> businessName;
+  final Value<String> receiptTagline;
+  final Value<String> businessHours;
+  final Value<String> businessAddress;
   final Value<String> receiptFooter;
   final Value<String> currency;
   final Value<String?> printerName;
@@ -535,6 +662,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   const SettingsCompanion({
     this.id = const Value.absent(),
     this.businessName = const Value.absent(),
+    this.receiptTagline = const Value.absent(),
+    this.businessHours = const Value.absent(),
+    this.businessAddress = const Value.absent(),
     this.receiptFooter = const Value.absent(),
     this.currency = const Value.absent(),
     this.printerName = const Value.absent(),
@@ -548,6 +678,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   SettingsCompanion.insert({
     this.id = const Value.absent(),
     this.businessName = const Value.absent(),
+    this.receiptTagline = const Value.absent(),
+    this.businessHours = const Value.absent(),
+    this.businessAddress = const Value.absent(),
     this.receiptFooter = const Value.absent(),
     this.currency = const Value.absent(),
     this.printerName = const Value.absent(),
@@ -561,6 +694,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   static Insertable<Setting> custom({
     Expression<int>? id,
     Expression<String>? businessName,
+    Expression<String>? receiptTagline,
+    Expression<String>? businessHours,
+    Expression<String>? businessAddress,
     Expression<String>? receiptFooter,
     Expression<String>? currency,
     Expression<String>? printerName,
@@ -574,6 +710,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (businessName != null) 'business_name': businessName,
+      if (receiptTagline != null) 'receipt_tagline': receiptTagline,
+      if (businessHours != null) 'business_hours': businessHours,
+      if (businessAddress != null) 'business_address': businessAddress,
       if (receiptFooter != null) 'receipt_footer': receiptFooter,
       if (currency != null) 'currency': currency,
       if (printerName != null) 'printer_name': printerName,
@@ -591,6 +730,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   SettingsCompanion copyWith({
     Value<int>? id,
     Value<String>? businessName,
+    Value<String>? receiptTagline,
+    Value<String>? businessHours,
+    Value<String>? businessAddress,
     Value<String>? receiptFooter,
     Value<String>? currency,
     Value<String?>? printerName,
@@ -604,6 +746,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     return SettingsCompanion(
       id: id ?? this.id,
       businessName: businessName ?? this.businessName,
+      receiptTagline: receiptTagline ?? this.receiptTagline,
+      businessHours: businessHours ?? this.businessHours,
+      businessAddress: businessAddress ?? this.businessAddress,
       receiptFooter: receiptFooter ?? this.receiptFooter,
       currency: currency ?? this.currency,
       printerName: printerName ?? this.printerName,
@@ -625,6 +770,15 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     }
     if (businessName.present) {
       map['business_name'] = Variable<String>(businessName.value);
+    }
+    if (receiptTagline.present) {
+      map['receipt_tagline'] = Variable<String>(receiptTagline.value);
+    }
+    if (businessHours.present) {
+      map['business_hours'] = Variable<String>(businessHours.value);
+    }
+    if (businessAddress.present) {
+      map['business_address'] = Variable<String>(businessAddress.value);
     }
     if (receiptFooter.present) {
       map['receipt_footer'] = Variable<String>(receiptFooter.value);
@@ -663,6 +817,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     return (StringBuffer('SettingsCompanion(')
           ..write('id: $id, ')
           ..write('businessName: $businessName, ')
+          ..write('receiptTagline: $receiptTagline, ')
+          ..write('businessHours: $businessHours, ')
+          ..write('businessAddress: $businessAddress, ')
           ..write('receiptFooter: $receiptFooter, ')
           ..write('currency: $currency, ')
           ..write('printerName: $printerName, ')
@@ -6572,6 +6729,9 @@ typedef $$SettingsTableCreateCompanionBuilder =
     SettingsCompanion Function({
       Value<int> id,
       Value<String> businessName,
+      Value<String> receiptTagline,
+      Value<String> businessHours,
+      Value<String> businessAddress,
       Value<String> receiptFooter,
       Value<String> currency,
       Value<String?> printerName,
@@ -6586,6 +6746,9 @@ typedef $$SettingsTableUpdateCompanionBuilder =
     SettingsCompanion Function({
       Value<int> id,
       Value<String> businessName,
+      Value<String> receiptTagline,
+      Value<String> businessHours,
+      Value<String> businessAddress,
       Value<String> receiptFooter,
       Value<String> currency,
       Value<String?> printerName,
@@ -6613,6 +6776,21 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<String> get businessName => $composableBuilder(
     column: $table.businessName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receiptTagline => $composableBuilder(
+    column: $table.receiptTagline,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessHours => $composableBuilder(
+    column: $table.businessHours,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessAddress => $composableBuilder(
+    column: $table.businessAddress,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6681,6 +6859,21 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get receiptTagline => $composableBuilder(
+    column: $table.receiptTagline,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessHours => $composableBuilder(
+    column: $table.businessHours,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessAddress => $composableBuilder(
+    column: $table.businessAddress,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get receiptFooter => $composableBuilder(
     column: $table.receiptFooter,
     builder: (column) => ColumnOrderings(column),
@@ -6741,6 +6934,21 @@ class $$SettingsTableAnnotationComposer
 
   GeneratedColumn<String> get businessName => $composableBuilder(
     column: $table.businessName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get receiptTagline => $composableBuilder(
+    column: $table.receiptTagline,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessHours => $composableBuilder(
+    column: $table.businessHours,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessAddress => $composableBuilder(
+    column: $table.businessAddress,
     builder: (column) => column,
   );
 
@@ -6812,6 +7020,9 @@ class $$SettingsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> businessName = const Value.absent(),
+                Value<String> receiptTagline = const Value.absent(),
+                Value<String> businessHours = const Value.absent(),
+                Value<String> businessAddress = const Value.absent(),
                 Value<String> receiptFooter = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> printerName = const Value.absent(),
@@ -6824,6 +7035,9 @@ class $$SettingsTableTableManager
               }) => SettingsCompanion(
                 id: id,
                 businessName: businessName,
+                receiptTagline: receiptTagline,
+                businessHours: businessHours,
+                businessAddress: businessAddress,
                 receiptFooter: receiptFooter,
                 currency: currency,
                 printerName: printerName,
@@ -6838,6 +7052,9 @@ class $$SettingsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> businessName = const Value.absent(),
+                Value<String> receiptTagline = const Value.absent(),
+                Value<String> businessHours = const Value.absent(),
+                Value<String> businessAddress = const Value.absent(),
                 Value<String> receiptFooter = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> printerName = const Value.absent(),
@@ -6850,6 +7067,9 @@ class $$SettingsTableTableManager
               }) => SettingsCompanion.insert(
                 id: id,
                 businessName: businessName,
+                receiptTagline: receiptTagline,
+                businessHours: businessHours,
+                businessAddress: businessAddress,
                 receiptFooter: receiptFooter,
                 currency: currency,
                 printerName: printerName,

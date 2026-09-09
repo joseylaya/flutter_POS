@@ -63,6 +63,9 @@ class SettingsScreen extends ConsumerWidget {
                   title: 'Business & receipt',
                   child: _BusinessForm(
                     name: settings.businessName,
+                    tagline: settings.receiptTagline,
+                    hours: settings.businessHours,
+                    address: settings.businessAddress,
                     footer: settings.receiptFooter,
                   ),
                 ),
@@ -405,8 +408,17 @@ class _BackupPanelState extends ConsumerState<_BackupPanel> {
 }
 
 class _BusinessForm extends ConsumerStatefulWidget {
-  const _BusinessForm({required this.name, required this.footer});
+  const _BusinessForm({
+    required this.name,
+    required this.tagline,
+    required this.hours,
+    required this.address,
+    required this.footer,
+  });
   final String name;
+  final String tagline;
+  final String hours;
+  final String address;
   final String footer;
   @override
   ConsumerState<_BusinessForm> createState() => _BusinessFormState();
@@ -414,10 +426,16 @@ class _BusinessForm extends ConsumerStatefulWidget {
 
 class _BusinessFormState extends ConsumerState<_BusinessForm> {
   late final name = TextEditingController(text: widget.name);
+  late final tagline = TextEditingController(text: widget.tagline);
+  late final hours = TextEditingController(text: widget.hours);
+  late final address = TextEditingController(text: widget.address);
   late final footer = TextEditingController(text: widget.footer);
   @override
   void dispose() {
     name.dispose();
+    tagline.dispose();
+    hours.dispose();
+    address.dispose();
     footer.dispose();
     super.dispose();
   }
@@ -431,6 +449,23 @@ class _BusinessFormState extends ConsumerState<_BusinessForm> {
       ),
       const SizedBox(height: 10),
       TextField(
+        controller: tagline,
+        decoration: const InputDecoration(labelText: 'Receipt tagline'),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: hours,
+        minLines: 3,
+        maxLines: 5,
+        decoration: const InputDecoration(labelText: 'Business hours'),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: address,
+        decoration: const InputDecoration(labelText: 'Business address'),
+      ),
+      const SizedBox(height: 10),
+      TextField(
         controller: footer,
         decoration: const InputDecoration(labelText: 'Receipt footer'),
       ),
@@ -440,7 +475,13 @@ class _BusinessFormState extends ConsumerState<_BusinessForm> {
         child: FilledButton(
           onPressed: () => ref
               .read(settingsRepositoryProvider)
-              .updateBusiness(name: name.text, footer: footer.text),
+              .updateBusiness(
+                name: name.text,
+                tagline: tagline.text,
+                hours: hours.text,
+                address: address.text,
+                footer: footer.text,
+              ),
           child: const Text('Save'),
         ),
       ),

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>JmPOS Activation</title>
+    <meta name="description" content="Securely generate a JmPOS mobile activation code." />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="card" aria-labelledby="title">
+        <div class="brand-mark" aria-hidden="true">J</div>
+        <p class="eyebrow">AUTHORIZED ACCESS ONLY</p>
+        <h1 id="title">JmPOS Activation</h1>
+        <p class="intro" id="intro">Sign in to generate a one-time activation code for another mobile device.</p>
+
+        <form id="login-form" class="stack" hidden>
+          <label>Username<input id="username" name="username" autocomplete="username" required /></label>
+          <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required /></label>
+          <button type="submit">Sign in securely</button>
+        </form>
+
+        <form id="pin-form" class="stack" hidden>
+          <label>
+            Six-digit request PIN
+            <input id="request-pin" name="requestPin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required />
+          </label>
+          <button type="submit">Generate activation code</button>
+        </form>
+
+        <section id="result" class="result" aria-live="polite" hidden>
+          <span>Activation code</span>
+          <strong id="activation-pin"></strong>
+          <button id="copy" class="secondary" type="button">Copy code</button>
+        </section>
+
+        <p id="status" class="status" role="status"></p>
+        <button id="logout" class="text-button" type="button" hidden>Sign out</button>
+      </section>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

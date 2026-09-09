@@ -15,6 +15,10 @@ Future<void> seedWebDemoData(AppDatabase database) async {
 
   await SettingsRepository(database).updateBusiness(
     name: 'Mang Juan Silogan',
+    tagline: 'Savoring every bite',
+    hours:
+        'Mon-Tue 10:00 AM - 10:00 PM\nWed - CLOSED\nThu-Sun 10:00 AM - 10:00 PM',
+    address: 'BNCA Basak Lapu-Lapu City',
     footer: 'Salamat po! Balik kayo.',
   );
 

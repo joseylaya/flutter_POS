@@ -11,13 +11,21 @@ class SettingsRepository {
 
   Future<void> updateBusiness({
     required String name,
+    required String tagline,
+    required String hours,
+    required String address,
     required String footer,
   }) async {
     await _database
         .update(_database.settings)
         .write(
           SettingsCompanion(
-            businessName: Value(name.trim().isEmpty ? 'JmPOS' : name.trim()),
+            businessName: Value(
+              name.trim().isEmpty ? 'BRADZ SILOGAN' : name.trim(),
+            ),
+            receiptTagline: Value(tagline.trim()),
+            businessHours: Value(hours.trim()),
+            businessAddress: Value(address.trim()),
             receiptFooter: Value(footer.trim()),
             updatedAt: Value(DateTime.now()),
           ),

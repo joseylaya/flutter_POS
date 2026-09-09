@@ -35,7 +35,15 @@ void main() {
     });
 
     final settings = await database.select(database.settings).getSingle();
-    expect(settings.businessName, 'JmPOS');
+    expect(settings.businessName, 'BRADZ SILOGAN');
+    expect(settings.receiptTagline, 'Savoring every bite');
+    expect(
+      settings.businessHours,
+      'Mon-Tue 10:00 AM - 10:00 PM\n'
+      'Wed - CLOSED\n'
+      'Thu-Sun 10:00 AM - 10:00 PM',
+    );
+    expect(settings.businessAddress, 'BNCA Basak Lapu-Lapu City');
     expect(settings.currency, 'PHP');
     expect(settings.nextTransactionNumber, 1);
     expect(settings.printerPaperWidthMm, 58);

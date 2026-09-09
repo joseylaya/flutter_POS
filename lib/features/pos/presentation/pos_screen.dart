@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -100,7 +102,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 onCategoryChanged: (value) =>
                     setState(() => selectedCategory = value),
               );
-              final order = _OrderPanel(cart: cart, discount: discount);
+              const order = _OrderPanel();
               return size.maxWidth >= 900
                   ? Row(
                       children: [
@@ -354,17 +356,17 @@ class _ProductCard extends ConsumerStatefulWidget {
 class _ProductCardState extends ConsumerState<_ProductCard> {
   int feedbackTick = 0;
 
-  Future<void> _updateCart() async {
+  void _updateCart() {
     final cart = ref.read(cartProvider);
     final exists = cart.lines.any(
       (line) => line.item.productId == widget.item.productId,
     );
     if (!widget.addMode && !exists) return;
 
-    await AppHaptics.light();
     widget.addMode
         ? ref.read(cartProvider.notifier).add(widget.item)
         : ref.read(cartProvider.notifier).decrement(widget.item);
+    unawaited(AppHaptics.light());
     setState(() => feedbackTick++);
   }
 
@@ -541,11 +543,12 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
 }
 
 class _OrderPanel extends ConsumerWidget {
-  const _OrderPanel({required this.cart, required this.discount});
-  final CartState cart;
-  final ActiveDiscount? discount;
+  const _OrderPanel();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cart = ref.watch(cartProvider);
+    final discount = ref.watch(activeDiscountProvider).valueOrNull;
     final quote = localQuote(cart, discount);
     return Container(
       decoration: BoxDecoration(
@@ -655,6 +658,7 @@ class _OrderPanel extends ConsumerWidget {
                                   ),
                                   const Spacer(),
                                   _QuantityStepper(
+                                    productId: line.item.productId,
                                     quantity: line.quantity,
                                     onDecrease: () => ref
                                         .read(cartProvider.notifier)
@@ -729,11 +733,13 @@ class _OrderPanel extends ConsumerWidget {
 
 class _QuantityStepper extends StatelessWidget {
   const _QuantityStepper({
+    required this.productId,
     required this.quantity,
     required this.onDecrease,
     required this.onIncrease,
   });
 
+  final String productId;
   final int quantity;
   final VoidCallback onDecrease;
   final VoidCallback onIncrease;
@@ -752,6 +758,7 @@ class _QuantityStepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _StepperButton(
+            buttonKey: Key('decrease-$productId'),
             tooltip: 'Remove one',
             icon: Icons.remove_rounded,
             onTap: onDecrease,
@@ -777,6 +784,7 @@ class _QuantityStepper extends StatelessWidget {
             ),
           ),
           _StepperButton(
+            buttonKey: Key('increase-$productId'),
             tooltip: 'Add one',
             icon: Icons.add_rounded,
             onTap: onIncrease,
@@ -790,12 +798,14 @@ class _QuantityStepper extends StatelessWidget {
 
 class _StepperButton extends StatelessWidget {
   const _StepperButton({
+    required this.buttonKey,
     required this.tooltip,
     required this.icon,
     required this.onTap,
     this.emphasized = false,
   });
 
+  final Key buttonKey;
   final String tooltip;
   final IconData icon;
   final VoidCallback onTap;
@@ -806,9 +816,10 @@ class _StepperButton extends StatelessWidget {
     message: tooltip,
     child: InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () async {
-        await AppHaptics.light();
+      key: buttonKey,
+      onTap: () {
         onTap();
+        unawaited(AppHaptics.light());
       },
       child: SizedBox(
         width: 40,

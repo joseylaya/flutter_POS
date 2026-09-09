@@ -143,15 +143,16 @@ class _Sidebar extends ConsumerWidget {
                     : MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 56,
+                    height: 56,
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B),
+                      color: Colors.black,
                       borderRadius: BorderRadius.circular(13),
                     ),
-                    child: const Icon(
-                      Icons.restaurant,
-                      color: Color(0xFF181000),
+                    child: Image.asset(
+                      'assets/images/bradz-silogan-logo.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
                   if (extended) ...[
@@ -161,7 +162,7 @@ class _Sidebar extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'JmPOS',
+                            'BRADZ SILOGAN',
                             style: TextStyle(
                               fontSize: 19,
                               fontWeight: FontWeight.w900,
