@@ -12,6 +12,13 @@ class SaleHistoryEntry {
   bool get isReversed => reversal != null;
 }
 
+class SaleHistoryPage {
+  const SaleHistoryPage({required this.items, required this.hasNext});
+
+  final List<SaleHistoryEntry> items;
+  final bool hasNext;
+}
+
 class ReportSummary {
   const ReportSummary({
     required this.sales,
@@ -19,12 +26,14 @@ class ReportSummary {
     required this.grossProfit,
     required this.expenses,
     required this.orders,
+    required this.itemsSold,
   });
   final int sales;
   final int cost;
   final int grossProfit;
   final int expenses;
   final int orders;
+  final int itemsSold;
   int get netProfit => grossProfit - expenses;
   int get marginBasisPoints =>
       sales == 0 ? 0 : ((grossProfit * 10000) / sales).round();
@@ -36,57 +45,84 @@ class ReportsRepository {
   final AppDatabase _database;
   final String Function() _generateId;
 
-  Stream<List<SaleHistoryEntry>> watchSales() {
-    final query = _database.select(_database.sales).join([
-      leftOuterJoin(
-        _database.saleReversals,
-        _database.saleReversals.saleId.equalsExp(_database.sales.id),
-      ),
-    ])..orderBy([OrderingTerm.desc(_database.sales.completedAt)]);
-    return query.watch().map(
-      (rows) => rows
-          .map(
-            (row) => SaleHistoryEntry(
-              sale: row.readTable(_database.sales),
-              reversal: row.readTableOrNull(_database.saleReversals),
+  Stream<SaleHistoryPage> watchSalesPage({
+    required int page,
+    required int pageSize,
+    required DateTime from,
+    required DateTime until,
+  }) {
+    assert(page >= 0);
+    assert(pageSize > 0);
+    final query =
+        _database.select(_database.sales).join([
+            leftOuterJoin(
+              _database.saleReversals,
+              _database.saleReversals.saleId.equalsExp(_database.sales.id),
             ),
+          ])
+          ..where(
+            _database.sales.completedAt.isBiggerOrEqualValue(from) &
+                _database.sales.completedAt.isSmallerThanValue(until),
           )
-          .toList(growable: false),
-    );
+          ..orderBy([OrderingTerm.desc(_database.sales.completedAt)])
+          ..limit(pageSize + 1, offset: page * pageSize);
+    return query.watch().map((rows) {
+      final hasNext = rows.length > pageSize;
+      return SaleHistoryPage(
+        hasNext: hasNext,
+        items: rows
+            .take(pageSize)
+            .map(
+              (row) => SaleHistoryEntry(
+                sale: row.readTable(_database.sales),
+                reversal: row.readTableOrNull(_database.saleReversals),
+              ),
+            )
+            .toList(growable: false),
+      );
+    });
   }
 
   Stream<ReportSummary> watchSummary(DateTime from, DateTime until) {
     final salesQuery =
         _database.select(_database.sales).join([
           leftOuterJoin(
+            _database.saleItems,
+            _database.saleItems.saleId.equalsExp(_database.sales.id),
+          ),
+          leftOuterJoin(
             _database.saleReversals,
             _database.saleReversals.saleId.equalsExp(_database.sales.id),
           ),
         ])..where(
-          _database.sales.completedAt.isBetweenValues(from, until) &
+          _database.sales.completedAt.isBiggerOrEqualValue(from) &
+              _database.sales.completedAt.isSmallerThanValue(until) &
               _database.saleReversals.saleId.isNull(),
         );
     final expenseQuery = _database.select(_database.expenses)
-      ..where((t) => t.expenseDate.isBetweenValues(from, until));
+      ..where(
+        (t) =>
+            t.expenseDate.isBiggerOrEqualValue(from) &
+            t.expenseDate.isSmallerThanValue(until),
+      );
     return salesQuery.watch().asyncExpand(
-      (rows) => expenseQuery.watch().map(
-        (expenses) => ReportSummary(
-          sales: rows.fold(
-            0,
-            (sum, row) => sum + row.readTable(_database.sales).totalAmount,
-          ),
-          cost: rows.fold(
-            0,
-            (sum, row) => sum + row.readTable(_database.sales).totalCost,
-          ),
-          grossProfit: rows.fold(
-            0,
-            (sum, row) => sum + row.readTable(_database.sales).profit,
-          ),
+      (rows) => expenseQuery.watch().map((expenses) {
+        final sales = <String, Sale>{};
+        var itemsSold = 0;
+        for (final row in rows) {
+          final sale = row.readTable(_database.sales);
+          sales[sale.id] = sale;
+          itemsSold += row.readTableOrNull(_database.saleItems)?.quantity ?? 0;
+        }
+        return ReportSummary(
+          sales: sales.values.fold(0, (sum, sale) => sum + sale.totalAmount),
+          cost: sales.values.fold(0, (sum, sale) => sum + sale.totalCost),
+          grossProfit: sales.values.fold(0, (sum, sale) => sum + sale.profit),
           expenses: expenses.fold(0, (sum, expense) => sum + expense.amount),
-          orders: rows.length,
-        ),
-      ),
+          orders: sales.length,
+          itemsSold: itemsSold,
+        );
+      }),
     );
   }
 
@@ -99,34 +135,97 @@ class ReportsRepository {
     DateTime until,
   ) {
     final query =
-        _database.select(_database.saleItems).join([
-          innerJoin(
-            _database.sales,
-            _database.sales.id.equalsExp(_database.saleItems.saleId),
+        _database.select(_database.sales).join([
+          leftOuterJoin(
+            _database.saleItems,
+            _database.saleItems.saleId.equalsExp(_database.sales.id),
           ),
           leftOuterJoin(
             _database.saleReversals,
             _database.saleReversals.saleId.equalsExp(_database.sales.id),
           ),
         ])..where(
-          _database.sales.completedAt.isBetweenValues(from, until) &
+          _database.sales.completedAt.isBiggerOrEqualValue(from) &
+              _database.sales.completedAt.isSmallerThanValue(until) &
               _database.saleReversals.saleId.isNull(),
         );
     return query.watch().map((rows) {
-      final grouped = <String, ProductPerformance>{};
+      final sales = <String, _SalePerformanceData>{};
       for (final row in rows) {
-        final item = row.readTable(_database.saleItems);
-        final old = grouped[item.productId];
-        grouped[item.productId] = ProductPerformance(
-          productName: item.productName,
-          quantity: (old?.quantity ?? 0) + item.quantity,
-          revenue: (old?.revenue ?? 0) + item.lineTotal,
-          profit: (old?.profit ?? 0) + item.lineProfit,
+        final sale = row.readTable(_database.sales);
+        final data = sales.putIfAbsent(
+          sale.id,
+          () => _SalePerformanceData(sale),
         );
+        final item = row.readTableOrNull(_database.saleItems);
+        if (item != null) data.items.add(item);
+      }
+      final grouped = <String, ProductPerformance>{};
+      for (final data in sales.values) {
+        if (data.items.isEmpty) {
+          _addPerformance(
+            grouped,
+            key: 'unallocated',
+            productName: 'Unallocated historical sales',
+            quantity: 0,
+            revenue: data.sale.totalAmount,
+            profit: data.sale.profit,
+          );
+          continue;
+        }
+        final lineRevenue = data.items.fold<int>(
+          0,
+          (sum, item) => sum + item.lineTotal,
+        );
+        final quantityWeight = data.items.fold<int>(
+          0,
+          (sum, item) => sum + item.quantity,
+        );
+        final weightTotal = lineRevenue > 0 ? lineRevenue : quantityWeight;
+        var allocatedRevenue = 0;
+        var allocatedProfit = 0;
+        for (var index = 0; index < data.items.length; index++) {
+          final item = data.items[index];
+          final isLast = index == data.items.length - 1;
+          final weight = lineRevenue > 0 ? item.lineTotal : item.quantity;
+          final revenue = isLast
+              ? data.sale.totalAmount - allocatedRevenue
+              : (data.sale.totalAmount * weight) ~/ weightTotal;
+          final profit = isLast
+              ? data.sale.profit - allocatedProfit
+              : (data.sale.profit * weight) ~/ weightTotal;
+          allocatedRevenue += revenue;
+          allocatedProfit += profit;
+          _addPerformance(
+            grouped,
+            key: item.productId,
+            productName: item.productName,
+            quantity: item.quantity,
+            revenue: revenue,
+            profit: profit,
+          );
+        }
       }
       return grouped.values.toList()
         ..sort((a, b) => b.revenue.compareTo(a.revenue));
     });
+  }
+
+  void _addPerformance(
+    Map<String, ProductPerformance> grouped, {
+    required String key,
+    required String productName,
+    required int quantity,
+    required int revenue,
+    required int profit,
+  }) {
+    final old = grouped[key];
+    grouped[key] = ProductPerformance(
+      productName: productName,
+      quantity: (old?.quantity ?? 0) + quantity,
+      revenue: (old?.revenue ?? 0) + revenue,
+      profit: (old?.profit ?? 0) + profit,
+    );
   }
 
   Future<SaleReversal> reverseSale({
@@ -215,6 +314,13 @@ class ReportsRepository {
       )..where((table) => table.id.equals(id))).getSingle();
     });
   }
+}
+
+class _SalePerformanceData {
+  _SalePerformanceData(this.sale);
+
+  final Sale sale;
+  final List<SaleItem> items = [];
 }
 
 class ProductPerformance {

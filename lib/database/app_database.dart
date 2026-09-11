@@ -71,7 +71,7 @@ class InventoryItems extends EntityTable {
 
 class Products extends EntityTable {
   TextColumn get name => text().withLength(min: 1, max: 120)();
-  TextColumn get category => text().withDefault(const Constant('Other'))();
+  TextColumn get category => text().withDefault(const Constant('Ala Carte'))();
   BlobColumn get imageData => blob().nullable()();
   IntColumn get sellingPrice =>
       integer().check(const CustomExpression<bool>('selling_price >= 0'))();
@@ -324,7 +324,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -409,6 +409,11 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           "UPDATE settings SET business_name = 'BRADZ SILOGAN' "
           "WHERE business_name = 'JmPOS'",
+        );
+      }
+      if (from < 11) {
+        await customStatement(
+          "UPDATE products SET category = 'Ala Carte' WHERE category = 'Other'",
         );
       }
     },

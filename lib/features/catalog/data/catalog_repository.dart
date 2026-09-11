@@ -70,13 +70,15 @@ class CatalogRepository {
     required String unit,
     required int costPerUnit,
     required int lowStockThreshold,
-    String category = 'Other',
+    String category = 'Ala Carte',
     Uint8List? imageData,
     List<ProductInclusionInput> inclusions = const [],
   }) async {
     final cleanName = name.trim();
     final cleanUnit = unit.trim();
-    final cleanCategory = category.trim().isEmpty ? 'Other' : category.trim();
+    final cleanCategory = category.trim().isEmpty
+        ? 'Ala Carte'
+        : category.trim();
     _validateCatalogValues(
       name: cleanName,
       sellingPrice: sellingPrice,

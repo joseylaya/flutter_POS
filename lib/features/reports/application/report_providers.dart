@@ -7,40 +7,33 @@ final reportsRepositoryProvider = Provider<ReportsRepository>((ref) {
   return ReportsRepository(ref.watch(appDatabaseProvider));
 });
 
-final salesHistoryProvider = StreamProvider<List<SaleHistoryEntry>>((ref) {
-  return ref.watch(reportsRepositoryProvider).watchSales();
-});
-
-enum ReportPeriod { today, week, month }
-
-(DateTime, DateTime) reportRange(ReportPeriod period, DateTime now) {
-  final today = DateTime(now.year, now.month, now.day);
-  final from = switch (period) {
-    ReportPeriod.today => today,
-    ReportPeriod.week => today.subtract(Duration(days: today.weekday - 1)),
-    ReportPeriod.month => DateTime(now.year, now.month),
-  };
-  final until = switch (period) {
-    ReportPeriod.today => today.add(const Duration(days: 1)),
-    ReportPeriod.week => from.add(const Duration(days: 7)),
-    ReportPeriod.month => DateTime(now.year, now.month + 1),
-  };
-  return (from, until);
-}
-
-final reportSummaryProvider =
-    StreamProvider.family<ReportSummary, ReportPeriod>((ref, period) {
-      final (from, until) = reportRange(period, DateTime.now());
-      return ref.watch(reportsRepositoryProvider).watchSummary(from, until);
-    });
-
-final productPerformanceProvider =
-    StreamProvider.family<List<ProductPerformance>, ReportPeriod>((
-      ref,
-      period,
-    ) {
-      final (from, until) = reportRange(period, DateTime.now());
+final salesHistoryPageProvider = StreamProvider.autoDispose
+    .family<
+      SaleHistoryPage,
+      ({int page, int pageSize, DateTime from, DateTime until})
+    >((ref, request) {
       return ref
           .watch(reportsRepositoryProvider)
-          .watchProductPerformance(from, until);
+          .watchSalesPage(
+            page: request.page,
+            pageSize: request.pageSize,
+            from: request.from,
+            until: request.until,
+          );
+    });
+
+typedef ReportRange = ({DateTime from, DateTime until});
+
+final reportSummaryProvider = StreamProvider.autoDispose
+    .family<ReportSummary, ReportRange>((ref, range) {
+      return ref
+          .watch(reportsRepositoryProvider)
+          .watchSummary(range.from, range.until);
+    });
+
+final productPerformanceProvider = StreamProvider.autoDispose
+    .family<List<ProductPerformance>, ReportRange>((ref, range) {
+      return ref
+          .watch(reportsRepositoryProvider)
+          .watchProductPerformance(range.from, range.until);
     });

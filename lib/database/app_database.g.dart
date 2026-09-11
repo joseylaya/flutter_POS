@@ -1469,7 +1469,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('Other'),
+    defaultValue: const Constant('Ala Carte'),
   );
   static const VerificationMeta _imageDataMeta = const VerificationMeta(
     'imageData',

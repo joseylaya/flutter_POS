@@ -5,7 +5,7 @@ class CatalogItem {
     required this.productId,
     required this.inventoryItemId,
     required this.name,
-    this.category = 'Other',
+    this.category = 'Ala Carte',
     required this.sellingPrice,
     required this.stockQuantity,
     required this.unit,

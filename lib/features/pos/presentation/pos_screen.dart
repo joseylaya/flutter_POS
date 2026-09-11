@@ -220,36 +220,7 @@ class _Menu extends StatelessWidget {
                   );
           },
         ),
-        Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: Row(
-            children: [
-              Icon(
-                addMode ? Icons.touch_app_outlined : Icons.backspace_outlined,
-                size: 17,
-                color: addMode
-                    ? const Color(0xFFF59E0B)
-                    : const Color(0xFFEF4444),
-              ),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  addMode
-                      ? 'Tap a product to add one to the order'
-                      : 'Tap a product to remove one from the order',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: addMode
-                        ? const Color(0xFFF59E0B)
-                        : const Color(0xFFEF4444),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -285,14 +256,31 @@ class _Menu extends StatelessWidget {
                 count: allProducts.where((p) => p.category == 'Drinks').length,
                 onSelected: onCategoryChanged,
               ),
-              if (allProducts.any((p) => p.category == 'Other'))
-                _Filter(
-                  'Other',
-                  icon: Icons.more_horiz,
-                  selected: selectedCategory == 'Other',
-                  count: allProducts.where((p) => p.category == 'Other').length,
-                  onSelected: onCategoryChanged,
-                ),
+              _Filter(
+                'Ala Carte',
+                icon: Icons.ramen_dining_outlined,
+                selected: selectedCategory == 'Ala Carte',
+                count: allProducts
+                    .where((p) => p.category == 'Ala Carte')
+                    .length,
+                onSelected: onCategoryChanged,
+              ),
+              _Filter(
+                'Foodpanda',
+                imageAsset: 'assets/images/foodpanda-logo.png',
+                selected: selectedCategory == 'Foodpanda',
+                count: allProducts
+                    .where((p) => p.category == 'Foodpanda')
+                    .length,
+                onSelected: onCategoryChanged,
+              ),
+              _Filter(
+                'Grab',
+                imageAsset: 'assets/images/grab-logo.png',
+                selected: selectedCategory == 'Grab',
+                count: allProducts.where((p) => p.category == 'Grab').length,
+                onSelected: onCategoryChanged,
+              ),
             ],
           ),
         ),
@@ -321,24 +309,50 @@ class _Filter extends StatelessWidget {
   const _Filter(
     this.label, {
     this.icon,
+    this.imageAsset,
     this.count,
     this.selected = false,
     required this.onSelected,
   });
   final String label;
   final IconData? icon;
+  final String? imageAsset;
   final int? count;
   final bool selected;
   final ValueChanged<String> onSelected;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(right: 10),
-    child: ChoiceChip(
+    child: Semantics(
+      label: count == null ? label : '$label, $count products',
+      button: true,
       selected: selected,
-      onSelected: (_) => onSelected(label),
-      showCheckmark: false,
-      avatar: icon == null ? null : Icon(icon, size: 18),
-      label: Text(count == null ? label : '$label  $count'),
+      child: ChoiceChip(
+        selected: selected,
+        onSelected: (_) => onSelected(label),
+        showCheckmark: false,
+        avatar: icon == null ? null : Icon(icon, size: 18),
+        label: imageAsset == null
+            ? Text(count == null ? label : '$label  $count')
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: Image.asset(
+                      imageAsset!,
+                      width: 64,
+                      height: 28,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  if (count != null) ...[
+                    const SizedBox(width: 6),
+                    Text('$count'),
+                  ],
+                ],
+              ),
+      ),
     ),
   );
 }

@@ -10,6 +10,7 @@ import '../../printing/receipt_service.dart';
 import '../../reports/application/report_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../application/cart_controller.dart';
+import 'sale_complete_screen.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key, required this.quote});
@@ -38,7 +39,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 76,
+        toolbarHeight: 68,
         leading: IconButton.filledTonal(
           tooltip: 'Back to order',
           onPressed: saving ? null : _back,
@@ -127,7 +128,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       );
       if (size.maxWidth >= 900) {
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -135,8 +136,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 width: size.maxWidth * .36,
                 child: SingleChildScrollView(child: left),
               ),
-              const SizedBox(width: 18),
-              Expanded(child: SingleChildScrollView(child: right)),
+              const SizedBox(width: 12),
+              Expanded(child: right),
             ],
           ),
         );
@@ -230,11 +231,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
       String message =
           'Sale #${result.sale.transactionNumber.toString().padLeft(6, '0')} completed.';
+      final items = await ref
+          .read(reportsRepositoryProvider)
+          .saleItems(result.sale.id);
+      final settings = await ref.read(settingsRepositoryProvider).get();
       try {
-        final items = await ref
-            .read(reportsRepositoryProvider)
-            .saleItems(result.sale.id);
-        final settings = await ref.read(settingsRepositoryProvider).get();
         await ReceiptService().printReceipt(
           settings: settings,
           sale: result.sale,
@@ -246,10 +247,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         message += ' $printError';
       }
       if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      await Navigator.of(context).pushReplacement<void, void>(
+        MaterialPageRoute(
+          builder: (_) => SaleCompleteScreen(
+            sale: result.sale,
+            items: items,
+            settings: settings,
+            receiptMessage: message,
+          ),
+        ),
+      );
     } on ValidationException catch (value) {
       setState(() => error = value.message);
     } catch (_) {
@@ -277,7 +284,7 @@ class _CheckoutProgress extends StatelessWidget {
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+        padding: const EdgeInsets.fromLTRB(20, 7, 20, 9),
         child: Row(
           children: [
             for (var index = 0; index < stages.length; index++) ...[
@@ -293,7 +300,7 @@ class _CheckoutProgress extends StatelessWidget {
               Column(
                 children: [
                   CircleAvatar(
-                    radius: 14,
+                    radius: 12,
                     backgroundColor: index <= activeStage
                         ? Theme.of(context).colorScheme.primary
                         : Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -304,7 +311,7 @@ class _CheckoutProgress extends StatelessWidget {
                         ? const Icon(Icons.check, size: 17)
                         : Text('${index + 1}'),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     stages[index],
                     style: Theme.of(context).textTheme.labelSmall,
@@ -651,7 +658,7 @@ class _PaymentPanel extends StatelessWidget {
           label: Text(orderLabel),
         ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 6),
       SegmentedButton<String>(
         segments: const [
           ButtonSegment(
@@ -668,11 +675,11 @@ class _PaymentPanel extends StatelessWidget {
         selected: {method},
         onSelectionChanged: saving ? null : (value) => onMethod(value.single),
         style: const ButtonStyle(
-          minimumSize: WidgetStatePropertyAll(Size.fromHeight(56)),
+          minimumSize: WidgetStatePropertyAll(Size.fromHeight(48)),
         ),
       ),
       if (method == 'CASH') ...[
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Row(
           children: [
             _QuickCash(
@@ -697,11 +704,11 @@ class _PaymentPanel extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Card(
           color: const Color(0xFF10B981).withValues(alpha: .13),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(10),
             child: Row(
               children: [
                 Expanded(
@@ -724,10 +731,10 @@ class _PaymentPanel extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -746,14 +753,14 @@ class _PaymentPanel extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 GridView.count(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisCount: 3,
-                  childAspectRatio: 2.8,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
+                  childAspectRatio: 4.2,
+                  mainAxisSpacing: 6,
+                  crossAxisSpacing: 6,
                   children: [
                     for (final key in const [
                       '1',
@@ -777,7 +784,7 @@ class _PaymentPanel extends StatelessWidget {
                         child: Text(
                           key,
                           style: const TextStyle(
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -855,7 +862,7 @@ class _PaymentPanel extends StatelessWidget {
             ),
           ),
         ),
-      const SizedBox(height: 18),
+      const SizedBox(height: 10),
       FilledButton.icon(
         onPressed:
             saving ||
@@ -866,13 +873,13 @@ class _PaymentPanel extends StatelessWidget {
             ? null
             : onComplete,
         style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(66),
+          minimumSize: const Size.fromHeight(56),
           foregroundColor: const Color(0xFF181000),
         ),
         icon: const Icon(Icons.print_outlined),
         label: Text(
           saving ? 'Completing sale…' : 'Complete Sale & Print Receipt',
-          style: const TextStyle(fontSize: 18),
+          style: const TextStyle(fontSize: 17),
         ),
       ),
     ],
@@ -895,7 +902,7 @@ class _QuickCash extends StatelessWidget {
     child: OutlinedButton(
       onPressed: () => onTap(amount),
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(70),
+        minimumSize: const Size.fromHeight(48),
         side: selected
             ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
             : null,

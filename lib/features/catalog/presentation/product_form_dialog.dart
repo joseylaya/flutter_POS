@@ -125,7 +125,9 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                               'Silog Meals',
                               'Sides & Add-ons',
                               'Drinks',
-                              'Other',
+                              'Ala Carte',
+                              'Foodpanda',
+                              'Grab',
                             ]
                             .map(
                               (value) => DropdownMenuItem(
